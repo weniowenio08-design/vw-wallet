@@ -70,18 +70,21 @@ const AGENDA = [
 let D = { summary: null, assets: [], news: null, backtest: null, digest: null, spark: {} };
 const seriesCache = {}, intraCache = {};
 
-async function j(p) { const r = await fetch(p + "?t=" + Math.floor(Date.now() / 60000)); if (!r.ok) throw new Error(p); return r.json(); }
+// "no-cache": o navegador pergunta ao servidor se mudou (resposta 304, quase sem bytes) em vez de baixar tudo de novo
+async function j(p) { const r = await fetch(p, { cache: "no-cache" }); if (!r.ok) throw new Error(p); return r.json(); }
+async function ensureNews() { if (D.news?.byAsset) return; try { const n = await j("data/news.json"); D.newsFull = n; D.news = n; } catch {} } // lista completa só quando a aba Notícias é aberta
+const assetNewsOf = async (sym) => { if (D.news?.byAsset?.[sym]) return D.news.byAsset[sym]; try { return await j(`data/news/${sym}.json`); } catch { return []; } };
 async function load(force) {
   // consulta leve primeiro: se o resumo não mudou desde a última vez, não baixa mais nada (economiza bateria e dados)
   const summary = await j("data/summary.json");
   if (!force && D.loaded && D.summary.updated === summary.updated) return false;
-  const [assets, news, spark] = await Promise.all([j("data/assets.json"), j("data/news.json"), j("data/spark.json").catch(() => ({}))]);
+  const [assets, news, spark] = await Promise.all([j("data/assets.json"), j("data/news-top.json").catch(() => j("data/news.json")), j("data/spark.json").catch(() => ({}))]);
   const changed = !D.summary || D.summary.updated !== summary.updated;
-  D.summary = summary; D.assets = assets; D.news = news; D.spark = spark;
+  D.summary = summary; D.assets = assets; D.news = D.newsFull?.updated === news.updated ? D.newsFull : news; D.spark = spark;
   try { D.backtest = await j("data/backtest.json"); } catch {}
   try { D.digest = await j("data/digest.json"); } catch {}
   try { D.tesouro = await j("data/tesouro.json"); } catch {}
-  store.set("snap", { summary, assets, spark, news: { ...news, items: news.items.slice(0, 40), byAsset: {} } });
+  store.set("snap", { summary, assets, spark, news: { updated: D.news.updated, mood: D.news.mood, items: D.news.items.slice(0, 14) } });
   D.loaded = true;
   return changed;
 }
@@ -223,7 +226,7 @@ const termKey = (t) => (GLOSS[t] ? t : GALIAS[t] || null);
 const TERM_RE = new RegExp("(?<![\\p{L}\\d/+])(" + [...Object.keys(GLOSS), ...Object.keys(GALIAS)].filter((x) => !x.endsWith(".")).sort((a, b) => b.length - a.length).map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(?![\\p{L}\\d])", "gu");
 const qicon = (key) => `<span class="q" role="button" tabindex="0" data-term="${esc(key)}" aria-label="O que é ${esc(key)}?">?</span>`;
 function annotate(root) {
-  const SKIP = "a,button,input,select,textarea,option,svg,script,style,.tk,.badge,.term,.q,.row,.chip,h1";
+  const SKIP = "a,button,input,select,textarea,option,svg,script,style,.tk,.badge,.term,.q,.row,.chip,.dic,h1";
   const used = new Map();
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.nodeValue.trim().length > 1 && !n.parentElement.closest(SKIP) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
   const nodes = []; for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n);
@@ -244,9 +247,9 @@ function openTerm(key) {
   $("#sheet").classList.add("on"); document.body.classList.add("noscroll");
 }
 function closeTerm() { $("#sheet").classList.remove("on"); if (!$("#search").classList.contains("on")) document.body.classList.remove("noscroll"); }
-function vDicionario(q = "") {
-  const t = nrm(q), list = Object.entries(GLOSS).filter(([k, v]) => !t || nrm(k).includes(t) || nrm(v[0]).includes(t) || nrm(v[1]).includes(t)).sort((a, b) => a[0].localeCompare(b[0], "pt-BR"));
-  return list.map(([k, v]) => `<div class="dic" data-opent="${esc(k)}"><b>${esc(k)}</b><span class="mut">${esc(v[0])}</span></div>`).join("") || '<div class="empty">Nenhum termo encontrado.</div>';
+function vDicionario(q = "", all = false) {
+  const t = nrm(q), list0 = Object.entries(GLOSS).filter(([k, v]) => !t || nrm(k).includes(t) || nrm(v[0]).includes(t) || nrm(v[1]).includes(t)).sort((a, b) => a[0].localeCompare(b[0], "pt-BR")), list = t || all ? list0 : list0.slice(0, 6);
+  return (list.map(([k, v]) => `<div class="dic" data-opent="${esc(k)}"><b>${esc(k)}</b><span class="mut">${esc(v[0])}</span></div>`).join("") || '<div class="empty">Nenhum termo encontrado.</div>') + (!t && !all ? `<button class="btn ghost" id="dic-more">Ver todos os ${list0.length} termos</button>` : "");
 }
 
 // ------------------------------------------------------------------ componentes
@@ -256,7 +259,7 @@ function spark(c, up) {
   return `<polyline points="${pts}" fill="none" stroke="${up ? "var(--up)" : "var(--down)"}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
 }
 const BADGE = { oferta: '<span class="badge">OFERTA</span>', aguardar: '<span class="badge w">EM ESPERA</span>', esticada: '<span class="badge s">ESTICADA</span>', evitar: '<span class="badge s">EVITAR</span>', observar: '<span class="badge w">OBSERVAR</span>' };
-const logo = (sym, big) => `<span class="logo${big ? " big" : ""}"><b>${esc(sym.slice(0, 2))}</b><img src="logos/${esc(sym)}.svg" alt="" loading="lazy"></span>`;
+const logo = (sym, big) => `<span class="logo${big ? " big" : ""}"><b>${esc(sym.slice(0, 2))}</b><img src="logos/${esc(sym)}.svg" alt="" loading="lazy" decoding="async"></span>`;
 function row(a, why = false) {
   const f = favs().has(a.sym) ? `<span class="fav">${icFill("star")}</span>` : "";
   return `<div class="row" data-go="#/ativo/${a.sym}">${logo(a.sym)}<div class="grow"><div class="tk">${a.sym}${f}${BADGE[a.label] || ""}</div><div class="nm">${esc(a.name)}</div>${why && a.why?.length ? `<div class="chips">${a.why.slice(0, 3).map((w) => `<span class="chip">${esc(w)}</span>`).join("")}</div>` : ""}</div><svg class="spark" viewBox="0 0 64 28" data-spark="${a.sym}" data-up="${a.d1 >= 0 ? 1 : 0}"></svg><div class="px num"><b>${fN(a.p)}</b><i class="${cl(a.d1)}">${pct(a.d1)}</i></div></div>`;
@@ -319,7 +322,7 @@ function vNoticias() {
   return secTitle(`Notícias · clima ${mood}`) + `<div class="fchips">${[["todas", "Todas"], ["br", "Brasil"], ["importantes", "Importantes"], ["minhas", "Meus ativos"], ["mundo", "Mundo"]].map(([k, t]) => `<button data-nw="${k}" class="${nwTab === k ? "on" : ""}">${t}</button>`).join("")}</div>
   <div class="card news">${newsList(items.slice(0, 60))}</div><p class="warn">O VW Wallet lê as principais fontes brasileiras (InfoMoney, Money Times, Exame, G1, Folha, Estadão, Agência Brasil e outras) e o noticiário internacional, várias vezes ao dia, mesmo com o app fechado.</p>`;
 }
-const assetNews = (sym) => { const it = D.news?.byAsset?.[sym]; return it?.length ? secTitle("Notícias desta empresa") + `<div class="card news">${newsList(it.slice(0, 5).map((x) => ({ ...x, cat: "br", syms: [] })))}</div>` : ""; };
+const assetNews = (it) => { return it?.length ? secTitle("Notícias desta empresa") + `<div class="card news">${newsList(it.slice(0, 5).map((x) => ({ ...x, cat: "br", syms: [] })))}</div>` : ""; };
 
 // ------------------------------------------------------------------ DETALHE + GRÁFICO (24 h, 2 dias, 1 semana, 1 mês, 1 ano, 5 anos)
 let range = store.get("range", "1m");
@@ -343,7 +346,7 @@ async function vAtivo(sym) {
     ${[["Dividend yield 12m", a.dy ? fN(a.dy * 100, 1) + "%" : "—", ""], ["Queda da máxima (12m)", pct(a.dd), cl(a.dd)], ["RSI (14 dias)", fN(a.rsi, 0), ""], ["Volatilidade", fN((a.vol || 0) * 100, 0) + "% a.a.", ""], ["5 dias", pct(a.d5), cl(a.d5)], ["21 dias", pct(a.d21), cl(a.d21)], ["Máxima 12m", "R$ " + fN(a.hi), ""], ["Mínima 12m", "R$ " + fN(a.lo), ""], ["Média 200 dias", "R$ " + fN(a.s200), ""], ["Nota do Alfred", a.score + "/100", ""], ...(a.pvp != null ? [["P/VP (oficial, CVM)", fN(a.pvp, 2), a.pvp <= 1 ? "up" : ""], ["Valor patrimonial por cota", "R$ " + fN(a.vp), ""], ["DY do último mês", fN(a.dyMes, 2) + "%", ""], ["Cotistas", (a.cotistas || 0).toLocaleString("pt-BR"), ""]] : [])].map(([k, v, c]) => `<div class="stat"><small>${k}</small><b class="num ${c}">${v}</b></div>`).join("")}</div>
   ${a.divs?.length ? secTitle("Últimos proventos") + `<div class="card">${a.divs.slice().reverse().map((d) => `<div class="cv" style="padding:7px 0;border-bottom:1px solid var(--line)"><span class="mut">${d.d.split("-").reverse().join("/")}</span><b class="num">R$ ${fN(d.a, 4)}</b></div>`).join("")}</div>` : ""}
   ${held.length ? secTitle("Na sua carteira") + `<div class="card">Você tem ${fBRL(held.reduce((s, p) => s + p.value, 0))} em ${a.sym}.</div>` : ""}
-  ${assetNews(a.sym)}
+  ${assetNews(await assetNewsOf(a.sym))}
   <button class="btn ghost" id="addpos">${ic("plus", "sm")} Adicionar à minha carteira</button>
   <p class="warn">RSI mede se o preço caiu rápido demais (abaixo de 30–35 costuma indicar exagero). A média de 200 dias mostra a tendência de fundo. São regras objetivas, não previsões. Dividend yield = proventos dos últimos 12 meses ÷ preço atual.</p>`;
 }
@@ -737,6 +740,7 @@ function bindMais() {
   X.bindMaisExtras(render);
   $("#ntfy")?.addEventListener("change", (e) => store.set("ntfy", e.target.value.trim()));
   $("#dic-q")?.addEventListener("input", (e) => { $("#dic-list").innerHTML = vDicionario(e.target.value); });
+  $("#dic-list")?.addEventListener("click", (e) => { if (e.target.id === "dic-more") $("#dic-list").innerHTML = vDicionario("", true); });
   if ($("#pl-in")) suggestBox($("#pl-in"), (n) => { const pl = myPlats(); if (!pl.includes(n)) { pl.push(n); store.set("plats", pl); } render(); toast(n + " adicionada."); });
   document.querySelectorAll("[data-rmpl]").forEach((b) => b.addEventListener("click", () => { store.set("plats", myPlats().filter((p) => p !== b.dataset.rmpl)); render(); }));
   $("#meta-save")?.addEventListener("click", () => { const m = {}; document.querySelectorAll("[data-meta]").forEach((i) => (m[i.dataset.meta] = num(i.value) ?? 0)); store.set("metas", m); toast("Metas salvas."); });
@@ -787,7 +791,7 @@ async function render() {
     view.querySelectorAll("[data-mt]").forEach((b) => b.addEventListener("click", () => { mkType = b.dataset.mt; store.set("mkType", mkType); render(); }));
     $("#mk-sort")?.addEventListener("change", (e) => { mkSort = e.target.value; store.set("mkSort", mkSort); render(); });
     $("#mk-more")?.addEventListener("click", () => { mkAll = true; render(); }); }
-  else if (route === "noticias") { view.innerHTML = vNoticias(); view.querySelectorAll("[data-nw]").forEach((b) => b.addEventListener("click", () => { nwTab = b.dataset.nw; render(); })); }
+  else if (route === "noticias") { await ensureNews(); view.innerHTML = vNoticias(); view.querySelectorAll("[data-nw]").forEach((b) => b.addEventListener("click", () => { nwTab = b.dataset.nw; render(); })); }
   else if (route === "carteira") { view.innerHTML = vCarteira(); hydrate(view); bindCarteira();
     view.querySelectorAll("[data-pv]").forEach((b) => b.addEventListener("click", () => { pieView = b.dataset.pv; render(); }));
     view.querySelectorAll("[data-pm]").forEach((b) => b.addEventListener("click", () => { pieMode = b.dataset.pm; store.set("pieMode", pieMode); render(); }));
@@ -805,7 +809,7 @@ async function render() {
 const X = makeExtras({ getD: () => D, aporteMes, store, esc, fN, fBRL, secTitle, ic, num, toast, CLS, CLS_COLOR, totals, todayBRT });
 const dados = makeDados({ store, toast, ic });
 let timer = null, lastRefresh = 0;
-const startTimer = () => { clearInterval(timer); timer = setInterval(refresh, 10 * 60 * 1000); };
+const startTimer = () => { clearInterval(timer); timer = setInterval(refresh, 15 * 60 * 1000); };
 function boot() {
   X.initLock(); dados.persist();
   // logos que não existem somem sem precisar de código dentro do HTML (permite política de segurança estrita)
