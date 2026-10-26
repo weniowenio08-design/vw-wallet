@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VW Wallet Investments">
+  <rect width="512" height="512" rx="112" fill="#0F1115"/>
+  <g fill="none" stroke="#F5C400" stroke-width="42" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="64,168 114,372 164,168"/>
+    <polyline points="226,168 276,372 326,252 376,372 450,108"/>
+  </g>
+  <rect x="176" y="436" width="160" height="16" rx="8" fill="#F5C400" opacity=".55"/>
+</svg>

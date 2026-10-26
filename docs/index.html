@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F5C400">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="VW Wallet">
+<title>VW Wallet Investments</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="icons/logo.svg">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <a class="brand" id="brand" role="button" aria-label="VW Wallet Investments: início">
+    <img src="icons/logo.svg" alt="" width="36" height="36">
+    <div><h1>VW Wallet</h1><div class="sub" id="upd">Investments · carregando…</div></div>
+  </a>
+  <div class="hr"><button class="icbtn" id="btn-search" aria-label="Buscar ativos"></button><div class="pill" id="regime">—</div></div>
+</header>
+<main id="view"><div class="skel"></div><div class="skel"></div><div class="skel"></div></main>
+<nav id="tabs"></nav>
+
+<section id="search" aria-label="Buscar ativos">
+  <div class="s-top"><button class="icbtn" id="s-back" aria-label="Fechar busca"></button><input id="sq" placeholder="Buscar ação, FII ou ETF (ex.: itau, KNCR, logística)" autocomplete="off" enterkeyhint="search"></div>
+  <div class="fchips" id="s-chips"><button data-st="todos" class="on">Todos</button><button data-st="acao">Ações</button><button data-st="fii">FIIs</button><button data-st="etf">ETFs</button><button data-st="fav">Favoritos</button></div>
+  <div id="s-res"></div>
+</section>
+<div id="sheet" aria-hidden="true"><div class="bk"></div><div class="pn" role="dialog" aria-label="Explicação"><div class="grab"></div><div id="sh-body"></div><button class="btn" id="sh-close">Entendi</button></div></div>
+<div id="toast" role="status"></div>
+<script src="main.js" type="module"></script>
+</body>
+</html>

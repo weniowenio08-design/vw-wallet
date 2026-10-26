@@ -1,0 +1,51 @@
+name: Alfred - cérebro (vigia o mercado e publica o app)
+
+on:
+  schedule:
+    - cron: "*/30 12-21 * * 1-5"   # a cada 30 min no horário do pregão (9h30-18h30 em Brasília), dias úteis
+    - cron: "40 22 * * 1-5"        # depois do fechamento
+    - cron: "10 11 * * *"          # um olhar de manhã, todos os dias
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: alfred-cerebro
+  cancel-in-progress: false
+
+jobs:
+  cerebro:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Cérebro (preços, juros, notícias, sinais, avisos)
+        run: node brain/run.mjs
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          APP_URL: ${{ vars.APP_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Estudo histórico (às segundas, ou se ainda não existir)
+        run: |
+          if [ "$(date -u +%u)" = "1" ] || [ ! -f docs/data/backtest.json ]; then node brain/backtest.mjs; fi
+      - name: Guardar o estado (para não repetir avisos) e marcar atividade
+        run: |
+          date -u +%F > state/heartbeat.txt
+          git config user.name "alfred-bot"
+          git config user.email "alfred-bot@users.noreply.github.com"
+          git add state
+          (git diff --cached --quiet || git commit -m "estado do cérebro [skip ci]") && git push || true
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deploy
+        uses: actions/deploy-pages@v4
