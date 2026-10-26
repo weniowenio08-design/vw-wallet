@@ -82,6 +82,11 @@ const intraOf = async (sym) => { if (!(sym in intraCache)) { try { intraCache[sy
 const asset = (sym) => D.assets.find((a) => a.sym === sym);
 // posição = { id, cls, sym, plat, value (valor investido), bp (preço pago por cota), q (quantidade) }. Com q e bp o valor atual acompanha o preço do ativo.
 const curVal = (p) => { const a = p.sym && p.q ? asset(p.sym) : null; return a ? p.q * a.p : p.value; };
+// aporte: valor base mensal (R$ 1.000) e exceções por mês. Outubro/2026 foi combinado em R$ 1.500; em novembro volta sozinho ao valor base.
+const AP_PLANO = { "2026-10": 1500 };
+const aporteBase = () => store.get("aporte", 1000);
+const aporteMes = () => { const k = todayBRT().slice(0, 7); return store.get("aporteMes", {})[k] ?? AP_PLANO[k] ?? aporteBase(); };
+const setAporteMes = (v) => { const k = todayBRT().slice(0, 7), o = store.get("aporteMes", {}); o[k] = v; store.set("aporteMes", o); };
 const posLive = () => store.get("posicoes", []).map((p) => ({ ...p, inv: p.value, value: curVal(p) }));
 
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("on"), 2600); }
@@ -437,7 +442,7 @@ const whereBuy = (k) => {
   return parts.join(" · ") || "Nenhuma das suas plataformas oferece isso: veja Mais › Minhas plataformas.";
 };
 function vCarteira() {
-  const all = posLive(), T = { ...DEF_T, ...store.get("metas", {}) }, ap = store.get("aporte", 1000), ipcaRate = store.get("ipca", null) ?? D.summary.macro.tesouro?.ipca2032 ?? null;
+  const all = posLive(), T = { ...DEF_T, ...store.get("metas", {}) }, ap = aporteMes(), ipcaRate = store.get("ipca", null) ?? D.summary.macro.tesouro?.ipca2032 ?? null;
   const usedPlats = [...new Set(all.map((p) => p.plat).filter(Boolean))];
   const pos = platFilter === "todas" ? all : all.filter((p) => p.plat === platFilter);
   const { by, total } = totals(pos), tsum = Object.values(T).reduce((a, b) => a + b, 0) || 1;
@@ -455,7 +460,7 @@ function vCarteira() {
   if (al.length) h += secTitle("Atenção") + `<div class="card">${al.map((x) => `<div style="padding:6px 0">• ${esc(x)}</div>`).join("")}</div>`;
   const S = suggest(pos, ap, T, ipcaRate);
   const diffs = CLS.map(([k, n]) => [n, total ? (by[k] / total) * 100 - (T[k] / tsum) * 100 : 0]).filter(([, d]) => Math.abs(d) >= 3);
-  h += secTitle("Para onde vai o próximo aporte") + `<div class="card">${total && diffs.length ? `<div class="mut" style="font-size:13.5px;line-height:1.5;margin-bottom:6px">${diffs.sort((a, b) => a[1] - b[1]).map(([n, d]) => `${n}: ${d < 0 ? `${fN(-d, 0)} pontos abaixo da meta` : `${fN(d, 0)} pontos acima`}`).join(" · ")}.</div>` : ""}<label>Quanto você vai investir (R$)</label><input id="ap" inputmode="decimal" value="${ap}"><label>Taxa do Tesouro IPCA+ que você vê hoje (% acima da inflação)</label><input id="ipca" inputmode="decimal" placeholder="ex.: 7,3" value="${ipcaRate ?? ""}">
+  h += secTitle("Para onde vai o próximo aporte") + `<div class="card">${total && diffs.length ? `<div class="mut" style="font-size:13.5px;line-height:1.5;margin-bottom:6px">${diffs.sort((a, b) => a[1] - b[1]).map(([n, d]) => `${n}: ${d < 0 ? `${fN(-d, 0)} pontos abaixo da meta` : `${fN(d, 0)} pontos acima`}`).join(" · ")}.</div>` : ""}<label>Quanto você vai investir neste mês (R$)</label><input id="ap" inputmode="decimal" value="${ap}"><label>Taxa do Tesouro IPCA+ que você vê hoje (% acima da inflação)</label><input id="ipca" inputmode="decimal" placeholder="ex.: 7,3" value="${ipcaRate ?? ""}">
   <table style="margin-top:12px"><tr><th>Classe</th><th class="r">Aportar</th></tr>${CLS.filter(([k]) => S.out[k] > 0.5 || T[k] > 0).map(([k, n]) => `<tr><td>${n}${S.notes[k] ? `<div class="mut" style="font-size:12px">${esc(S.notes[k])}</div>` : ""}${S.out[k] > 0.5 ? `<div class="mut" style="font-size:12px">${esc(whereBuy(k))}</div>` : ""}${S.sel[k]?.length && S.out[k] > 0.5 ? `<div class="chips">${S.sel[k].map((x) => `<span class="chip" data-go="#/ativo/${x}" style="cursor:pointer">${x}</span>`).join("")}</div>` : ""}</td><td class="r num"><b>${fBRL(S.out[k])}</b></td></tr>`).join("")}</table>
   <div class="mut" style="font-size:12px;margin-top:10px;line-height:1.5">Os códigos sugeridos vêm dos ativos de qualidade com melhor nota hoje. Quem compra é você, pelo seu banco ou corretora.</div></div>`;
   h += secTitle("Minhas posições") + `<div class="card">${pos.length ? pos.map((p) => `<div class="row" style="cursor:default">${p.sym ? logo(p.sym) : `<span class="logo ic-only">${ic("wallet", "sm")}</span>`}<div class="grow"><div class="tk" style="font-size:15px">${esc(p.sym || CLS.find((c) => c[0] === p.cls)[1])}</div><div class="nm">${CLS.find((c) => c[0] === p.cls)[1]}${p.plat ? " · " + esc(p.plat) : ""}</div></div><div class="px num"><b>${fBRL(p.value)}</b>${p.q && p.bp ? (() => { const g = (p.value - p.inv) / p.inv; return `<i class="${cl(g)}">${pct(g)}</i>`; })() : ""}</div><button class="btn sm ghost" data-del="${p.id}" aria-label="Excluir">${ic("trash", "sm")}</button></div>`).join("") : '<div class="empty">Nada cadastrado ainda. Adicione abaixo o que você já tem investido.</div>'}</div>`;
@@ -469,7 +474,7 @@ function vCarteira() {
 }
 function bindCarteira() {
   const re = () => render();
-  $("#ap")?.addEventListener("change", (e) => { const v = num(e.target.value); if (v != null) store.set("aporte", v); re(); });
+  $("#ap")?.addEventListener("change", (e) => { const v = num(e.target.value); if (v != null) setAporteMes(v); re(); });
   $("#ipca")?.addEventListener("change", (e) => { store.set("ipca", num(e.target.value)); re(); });
   if ($("#f-plat")) suggestBox($("#f-plat"));
   $("#f-add")?.addEventListener("click", () => {
@@ -524,7 +529,7 @@ async function notifySinais() {
 // ------------------------------------------------------------------ RECOMENDAÇÃO DO DIA (carteira automática pelo perfil)
 const TIT_RF = { selic: "Tesouro Selic", ipca: "Tesouro IPCA+ (vencimento 2032 ou próximo)", cdb: "CDB, LCI ou LCA com liquidez e FGC" };
 function planoHoje() {
-  const qa = store.get("quiz", {}), pr = profileOf(qa), T = pr.alloc, ap = store.get("aporte", 1000), pos = posLive();
+  const qa = store.get("quiz", {}), pr = profileOf(qa), T = pr.alloc, ap = aporteMes(), pos = posLive();
   const ipcaRate = store.get("ipca", null) ?? D.summary.macro.tesouro?.ipca2032 ?? null;
   const S = suggest(pos, ap, T, ipcaRate), I = suggest(pos, ap, T, ipcaRate, "calmo");
   const split = (sel, amt) => { if (!sel?.length || amt < 1) return []; const ws = sel.map((s) => Math.max(1, asset(s)?.score || 1)), sw = ws.reduce((a, b) => a + b, 0); return sel.map((s, i) => { const a = asset(s), v = (amt * ws[i]) / sw; return { sym: s, a, v, q: Math.floor(v / a.p) }; }); };
@@ -550,7 +555,7 @@ function vRecomendar() {
   <p class="warn">Os códigos são os ativos de qualidade com melhor nota do Alfred hoje, nas classes do seu perfil. É material de estudo gerado por regras objetivas, não recomendação personalizada de investimento. Confira preço, taxas e prazos na sua corretora e só registre aqui o que você realmente comprou.</p>`;
 }
 function bindRecomendar() {
-  $("#rec-ap")?.addEventListener("change", (e) => { const v = num(e.target.value); if (v > 0) { store.set("aporte", v); render(); } });
+  $("#rec-ap")?.addEventListener("change", (e) => { const v = num(e.target.value); if (v > 0) { setAporteMes(v); render(); } });
   $("#rec-reg")?.addEventListener("click", () => {
     const P = planoHoje(); if (!P.now.length) return;
     if (!confirm(`Registrar ${P.now.length} compras (${fBRL(P.now.reduce((s, x) => s + x.v, 0))}) na sua carteira? Faça isso só depois de comprar de verdade.`)) return;
@@ -709,7 +714,7 @@ async function render() {
   window.scrollTo(0, 0);
 }
 
-const X = makeExtras({ getD: () => D, store, esc, fN, fBRL, secTitle, ic, num, toast, CLS, CLS_COLOR, totals, todayBRT });
+const X = makeExtras({ getD: () => D, aporteMes, store, esc, fN, fBRL, secTitle, ic, num, toast, CLS, CLS_COLOR, totals, todayBRT });
 const dados = makeDados({ store, toast, ic });
 let timer = null, lastRefresh = 0;
 const startTimer = () => { clearInterval(timer); timer = setInterval(refresh, 10 * 60 * 1000); };

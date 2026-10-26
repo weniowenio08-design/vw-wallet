@@ -1,6 +1,6 @@
 // Extras do VW Wallet: saúde da carteira, teste de estresse, renda estimada, Focus, Tesouro, ferramentas, trilha de aprendizado, PIN e lembrete de aporte.
 export function makeExtras(c) {
-  const { getD, store, esc, fN, fBRL, secTitle, ic, num, toast, CLS, CLS_COLOR, totals, todayBRT } = c;
+  const { getD, aporteMes, store, esc, fN, fBRL, secTitle, ic, num, toast, CLS, CLS_COLOR, totals, todayBRT } = c;
   const D = () => getD();
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const P1 = (x) => (x == null || isNaN(x) ? "—" : fN(x, 2) + "%");
@@ -89,7 +89,7 @@ export function makeExtras(c) {
     const hoje = new Date(todayBRT() + "T12:00:00"), mes = todayBRT().slice(0, 7);
     if (store.get("aporteFeito", "") === mes) return "";
     const d = hoje.getDate(); if (d < dia || d > dia + 6) return "";
-    return `<div class="card cta" data-go="#/carteira" style="border-left:4px solid var(--gold)"><div class="cta-i">${ic("wallet")}</div><div style="flex:1"><div style="font-weight:800">Dia do aporte</div><div class="mut" style="font-size:13px;margin-top:2px">Veja onde colocar os R$ ${fN(store.get("aporte", 1000), 0)} deste mês.</div></div><button class="btn sm" id="ap-done">Já fiz</button></div>`;
+    return `<div class="card cta" data-go="#/carteira" style="border-left:4px solid var(--gold)"><div class="cta-i">${ic("wallet")}</div><div style="flex:1"><div style="font-weight:800">Dia do aporte</div><div class="mut" style="font-size:13px;margin-top:2px">Veja onde colocar os R$ ${fN(aporteMes(), 0)} deste mês.</div></div><button class="btn sm" id="ap-done">Já fiz</button></div>`;
   }
 
   // ------------------------------------------------------------ ferramentas
