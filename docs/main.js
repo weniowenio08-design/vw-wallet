@@ -13,7 +13,15 @@ const fBRL = (n) => (n == null || isNaN(n) ? "—" : n.toLocaleString("pt-BR", {
 const pct = (x, d = 1) => (x == null ? "—" : (x >= 0 ? "+" : "") + fN(x * 100, d) + "%");
 const cl = (x) => (x >= 0 ? "up" : "down");
 const ago = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60000); return m < 1 ? "agora" : m < 60 ? `há ${m} min` : m < 1440 ? `há ${Math.round(m / 60)} h` : `há ${Math.round(m / 1440)} d`; };
-const num = (s) => { const v = parseFloat(String(s).replace(/\./g, "").replace(",", ".")); return isNaN(v) ? null : v; };
+// Lê número digitado com vírgula OU ponto como decimal: "803,38", "803.38", "1.234,56", "1,234.56". "1.000" (três casas depois do ponto) é lido como mil, como no Brasil.
+const num = (s) => {
+  let t = String(s ?? "").replace(/R\$|\s/g, ""); if (!t) return null;
+  const hasC = t.includes(","), hasD = t.includes(".");
+  if (hasC && hasD) t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  else if (hasC) t = t.split(",").length > 2 ? t.replace(/,/g, "") : t.replace(",", ".");
+  else if (hasD) { const p = t.split("."); if (p.length > 2 || (p[1].length === 3 && p[0] !== "0" && p[0] !== "")) t = p.join(""); }
+  const v = parseFloat(t); return isNaN(v) ? null : v;
+};
 const nrm = (s) => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 const two = (n) => String(n).padStart(2, "0");
 const brt = (unix) => new Date((unix - 3 * 3600) * 1000);
@@ -34,6 +42,7 @@ const IC = {
   share: "M12 15V4M8 8l4-4 4 4M5 13v6h14v-6",
   plus: "M12 5v14M5 12h14",
   trash: "M5 7h14M9 7V5h6v2M7 7l1 12h8l1-12",
+  edit: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
   back: "M15 5l-7 7 7 7",
   user: "M12 12a4 4 0 100-8 4 4 0 000 8zM5 20a7 7 0 0114 0",
   target: "M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8zM12 12h.01",
@@ -506,25 +515,31 @@ function vCarteira() {
   h += secTitle("Para onde vai o próximo aporte") + `<div class="card">${total && diffs.length ? `<div class="mut" style="font-size:13.5px;line-height:1.5;margin-bottom:6px">${diffs.sort((a, b) => a[1] - b[1]).map(([n, d]) => `${n}: ${d < 0 ? `${fN(-d, 0)} pontos abaixo da meta` : `${fN(d, 0)} pontos acima`}`).join(" · ")}.</div>` : ""}<label>Quanto você vai investir neste mês (R$)</label><input id="ap" inputmode="decimal" value="${ap}"><label>Taxa do Tesouro IPCA+ que você vê hoje (% acima da inflação)</label><input id="ipca" inputmode="decimal" placeholder="ex.: 7,3" value="${ipcaRate ?? ""}">
   <table style="margin-top:12px"><tr><th>Classe</th><th class="r">Aportar</th></tr>${CLS.filter(([k]) => S.out[k] > 0.5 || T[k] > 0).map(([k, n]) => `<tr><td>${n}${S.notes[k] ? `<div class="mut" style="font-size:12px">${esc(S.notes[k])}</div>` : ""}${S.out[k] > 0.5 ? `<div class="mut" style="font-size:12px">${esc(whereBuy(k))}</div>` : ""}${S.sel[k]?.length && S.out[k] > 0.5 ? `<div class="chips">${S.sel[k].map((x) => `<span class="chip" data-go="#/ativo/${x}" style="cursor:pointer">${x}</span>`).join("")}</div>` : ""}</td><td class="r num"><b>${fBRL(S.out[k])}</b></td></tr>`).join("")}</table>
   <div class="mut" style="font-size:12px;margin-top:10px;line-height:1.5">Os códigos sugeridos vêm dos ativos de qualidade com melhor nota hoje. Quem compra é você, pelo seu banco ou corretora.</div></div>`;
-  h += secTitle("Minhas posições") + `<div class="card">${pos.length ? pos.map((p) => `<div class="row" style="cursor:default">${p.sym ? logo(p.sym) : `<span class="logo ic-only">${ic("wallet", "sm")}</span>`}<div class="grow"><div class="tk" style="font-size:15px">${esc(p.sym || CLS.find((c) => c[0] === p.cls)[1])}</div><div class="nm">${CLS.find((c) => c[0] === p.cls)[1]}${p.plat ? " · " + esc(p.plat) : ""}</div></div><div class="px num"><b>${fBRL(p.value)}</b>${p.q && p.bp ? (() => { const g = (p.value - p.inv) / p.inv; return `<i class="${cl(g)}">${pct(g)}</i>`; })() : ""}</div><button class="btn sm ghost" data-del="${p.id}" aria-label="Excluir">${ic("trash", "sm")}</button></div>`).join("") : '<div class="empty">Nada cadastrado ainda. Adicione abaixo o que você já tem investido.</div>'}</div>`;
+  h += secTitle("Minhas posições") + `<div class="card">${pos.length ? pos.map((p) => `<div class="row" style="cursor:default">${p.sym ? logo(p.sym) : `<span class="logo ic-only">${ic("wallet", "sm")}</span>`}<div class="grow"><div class="tk" style="font-size:15px">${esc(p.sym || CLS.find((c) => c[0] === p.cls)[1])}</div><div class="nm">${CLS.find((c) => c[0] === p.cls)[1]}${p.plat ? " · " + esc(p.plat) : ""}</div></div><div class="px num"><b>${fBRL(p.value)}</b>${p.q && p.bp ? (() => { const g = (p.value - p.inv) / p.inv; return `<i class="${cl(g)}">${pct(g)}</i>`; })() : ""}</div><button class="btn sm ghost" data-edit="${p.id}" aria-label="Editar" style="margin-right:6px">${ic("edit", "sm")}</button><button class="btn sm ghost" data-del="${p.id}" aria-label="Excluir">${ic("trash", "sm")}</button></div>`).join("") : '<div class="empty">Nada cadastrado ainda. Adicione abaixo o que você já tem investido.</div>'}</div>`;
   const pre = store.get("prefill", null); store.set("prefill", null);
-  h += `<div class="card"><b>Adicionar posição</b><label>Classe</label><select id="f-cls">${CLS.map(([k, n]) => `<option value="${k}" ${pre && ((pre.type === "fii" && k === "fii") || (pre.type === "acao" && k === "acao") || (pre.type === "etf" && k === "ext")) ? "selected" : ""}>${n}</option>`).join("")}</select>
-  <label>Código do ativo (opcional, para ações e FIIs)</label><input id="f-sym" list="syms" placeholder="ex.: KNCR11" value="${pre?.sym || ""}"><datalist id="syms">${D.assets.map((a) => `<option value="${a.sym}">${esc(a.name)}</option>`).join("")}</datalist>
-  <label>Plataforma (digite as primeiras letras)</label><div><input id="f-plat" placeholder="ex.: XP, nu, revolut…" autocomplete="off" value="${esc(myPlats()[0] || "")}"></div>
-  <label>Valor investido (R$)</label><input id="f-val" inputmode="decimal" placeholder="ex.: 300">
-  <label>Preço pago por cota ou ação (R$, só para ações, FIIs e ETFs; vazio = preço de agora)</label><input id="f-bp" inputmode="decimal" placeholder="ex.: 9,85"><div class="mut" style="font-size:12px;margin-top:6px;line-height:1.45">Com o preço pago, o app acompanha o seu lucro e avisa a boa hora de vender.</div><button class="btn" id="f-add">Salvar posição</button></div>`;
+  const ed = editId ? all.find((p) => String(p.id) === String(editId)) : null; if (editId && !ed) editId = null;
+  h += `<div class="card" id="f-card"${ed ? ' style="outline:2px solid var(--gold)"' : ""}><b>${ed ? "Editar posição" : "Adicionar posição"}</b><label>Classe</label><select id="f-cls">${CLS.map(([k, n]) => `<option value="${k}" ${ed ? (ed.cls === k ? "selected" : "") : pre && ((pre.type === "fii" && k === "fii") || (pre.type === "acao" && k === "acao") || (pre.type === "etf" && k === "ext")) ? "selected" : ""}>${n}</option>`).join("")}</select>
+  <label>Código do ativo (opcional, para ações e FIIs)</label><input id="f-sym" list="syms" placeholder="ex.: KNCR11" value="${esc(ed ? ed.sym : pre?.sym || "")}"><datalist id="syms">${D.assets.map((a) => `<option value="${a.sym}">${esc(a.name)}</option>`).join("")}</datalist>
+  <label>Plataforma (digite as primeiras letras)</label><div><input id="f-plat" placeholder="ex.: XP, nu, revolut…" autocomplete="off" value="${esc(ed ? ed.plat : myPlats()[0] || "")}"></div>
+  <label>Valor investido (R$)</label><input id="f-val" inputmode="decimal" placeholder="ex.: 300" value="${ed ? String(+ed.inv.toFixed(2)).replace(".", ",") : ""}">
+  <label>Preço pago por cota ou ação (R$, só para ações, FIIs e ETFs; vazio = preço de agora)</label><input id="f-bp" inputmode="decimal" placeholder="ex.: 9,85" value="${ed?.bp ? String(+ed.bp.toFixed(4)).replace(".", ",") : ""}"><div class="mut" style="font-size:12px;margin-top:6px;line-height:1.45">Com o preço pago, o app acompanha o seu lucro e avisa a boa hora de vender.</div><button class="btn" id="f-add">${ed ? "Salvar alterações" : "Salvar posição"}</button>${ed ? '<button class="btn ghost" id="f-cancel">Cancelar edição</button>' : ""}</div>`;
   return h;
 }
+let editId = null;
 function bindCarteira() {
   const re = () => render();
+  $("#f-cancel")?.addEventListener("click", () => { editId = null; re(); });
+  document.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => { editId = b.dataset.edit; re(); setTimeout(() => $("#f-card")?.scrollIntoView({ block: "start", behavior: "smooth" }), 60); }));
   $("#ap")?.addEventListener("change", (e) => { const v = num(e.target.value); if (v != null) setAporteMes(v); re(); });
   $("#ipca")?.addEventListener("change", (e) => { store.set("ipca", num(e.target.value)); re(); });
   if ($("#f-plat")) suggestBox($("#f-plat"));
   $("#f-add")?.addEventListener("click", () => {
     const v = num($("#f-val").value); if (!v || v <= 0) return toast("Digite um valor em R$.");
     const sym = $("#f-sym").value.trim().toUpperCase(), plat = $("#f-plat").value.trim();
-    const a = sym ? asset(sym) : null, bp = a ? num($("#f-bp").value) || a.p : null;
-    const pos = store.get("posicoes", []); pos.push({ id: Date.now(), cls: $("#f-cls").value, sym: sym || "", plat, value: v, ...(a ? { bp, q: v / bp } : {}) }); store.set("posicoes", pos); toast("Posição salva."); re();
+    const pos = store.get("posicoes", []), cur = editId ? pos.find((x) => String(x.id) === String(editId)) : null;
+    const a = sym ? asset(sym) : null, bp = a ? num($("#f-bp").value) || cur?.bp || a.p : null;
+    if (cur) { Object.assign(cur, { cls: $("#f-cls").value, sym: sym || "", plat, value: v }); if (a) { cur.bp = bp; cur.q = v / bp; } else { delete cur.bp; delete cur.q; } store.set("posicoes", pos); editId = null; toast("Posição atualizada."); return re(); }
+    pos.push({ id: Date.now(), cls: $("#f-cls").value, sym: sym || "", plat, value: v, ...(a ? { bp, q: v / bp } : {}) }); store.set("posicoes", pos); toast("Posição salva."); re();
   });
   const auto = () => { const qa = store.get("quiz", {}); if (!QUIZ.every((q) => qa[q.k])) { toast("Responda as 9 perguntas e eu gero as metas."); location.hash = "#/perfil"; return; } store.set("metas", profileOf(qa).alloc); toast("Metas geradas pelo seu perfil."); re(); };
   $("#meta-auto2")?.addEventListener("click", auto);
