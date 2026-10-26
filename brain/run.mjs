@@ -396,8 +396,8 @@ async function main() {
   await fs.writeFile(path.join(OUT, "assets.json"), JSON.stringify(assets));
   await fs.writeFile(path.join(OUT, "news.json"), JSON.stringify({ updated: summary.updated, mood: nw.mood, items: nw.items.map(({ title, link, date, source, tone, key, cat, syms }) => ({ title, link, date, source, tone, key, cat, syms })), byAsset: nw.byAsset }));
   // versão leve das notícias (o app abre mais rápido e gasta menos dados) e notícias por ativo em arquivos pequenos
-  const slim = ({ title, link, date, source, tone, key, cat, syms }) => ({ title, link, date, source, tone, key, cat, syms });
-  await fs.writeFile(path.join(OUT, "news-top.json"), JSON.stringify({ updated: summary.updated, mood: nw.mood, items: nw.items.slice(0, 14).map(slim) }));
+  const slimNews = ({ title, link, date, source, tone, key, cat, syms }) => ({ title, link, date, source, tone, key, cat, syms });
+  await fs.writeFile(path.join(OUT, "news-top.json"), JSON.stringify({ updated: summary.updated, mood: nw.mood, items: nw.items.slice(0, 14).map(slimNews) }));
   await fs.mkdir(path.join(OUT, "news"), { recursive: true });
   for (const [sym, items] of Object.entries(nw.byAsset || {})) await fs.writeFile(path.join(OUT, "news", sym + ".json"), JSON.stringify(items.slice(0, 6)));
   await fs.writeFile(path.join(OUT, "spark.json"), JSON.stringify(spark));
