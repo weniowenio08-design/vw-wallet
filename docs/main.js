@@ -628,26 +628,34 @@ const PROFILES = [
   { n: "Arrojado", d: "Aceita oscilações fortes em troca de crescimento no longo prazo.", a: { selic: 15, ipca: 18, cdb: 0, fii: 22, acao: 30, ext: 15 } },
   { n: "Agressivo", d: "Foco em crescimento e aceita perdas grandes e temporárias.", a: { selic: 10, ipca: 10, cdb: 0, fii: 25, acao: 40, ext: 15 } },
 ];
+const qList = (v) => (v == null ? [] : [].concat(v));
+let quizDraft = { k: "", v: [] }; // opções marcadas na pergunta atual (até 2)
+// Cada pergunta aceita até 2 respostas. A pontuação usa a média das duas; os limites de segurança (prazo curto, pouca tolerância, sem reserva, pode precisar do dinheiro) valem se QUALQUER uma delas for marcada.
 function profileOf(ans) {
-  const sc = (k) => QUIZ.find((x) => x.k === k).o.find((o) => o[0] === ans[k])?.[2] ?? 0;
+  const L = (k) => qList(ans[k]);
+  const sc = (k) => { const q = QUIZ.find((x) => x.k === k), v = L(k).map((o) => q.o.find((x) => x[0] === o)?.[2] ?? 0); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : 0; };
   const raw = sc("obj") * 2 + sc("prazo") * 3 + sc("queda") * 2 + sc("perda") * 3 + sc("exp") + sc("reserva") + sc("dep");
   const score = Math.max(0, Math.min(100, Math.round((raw / 36) * 100)));
   let idx = score < 20 ? 0 : score < 40 ? 1 : score < 60 ? 2 : score < 80 ? 3 : 4; const why = [];
   const cap = (max, msg) => { if (idx > max) { idx = max; why.push(msg); } };
-  if (ans.prazo === "<1") cap(0, "Você precisa do dinheiro em menos de 1 ano: o certo é segurança e liquidez.");
-  if (ans.perda === "2") cap(0, "Você só tolera perder até 2% no ano.");
-  if (ans.perda === "5") cap(1, "Você tolera perder até 5% no ano: limitei a renda variável.");
-  if (ans.perda === "10") cap(1, "Você tolera perder até 10% no ano: limitei a renda variável.");
-  if (ans.reserva === "nao" || ans.reserva === "<3") cap(2, "Sua reserva de emergência ainda não está completa: complete antes de assumir mais risco.");
-  if (ans.dep === "sim") cap(1, "Você pode precisar do dinheiro antes: prefira liquidez.");
-  const P = PROFILES[idx], a = { ...P.a }, mv = (from, to, n) => { const x = Math.min(n, a[from]); a[from] -= x; a[to] += x; };
-  if (ans.renda === "mensal") mv("acao", "fii", 3); if (ans.renda === "cresc") mv("fii", "acao", 3);
-  if (ans.ext === "nao") mv("ext", idx <= 1 ? "selic" : "acao", a.ext); if (ans.ext === "sim") mv("selic", "ext", 3);
-  if (ans.prazo === ">10" && idx >= 2) why.push("Seu prazo é longo: ações e FIIs têm tempo de se recuperar de quedas.");
-  if (ans.obj === "rapido") why.push("Querer ganhar mais rápido significa aceitar mais oscilação. Não existe retorno alto sem risco e o Alfred não promete isso.");
-  if (ans.reserva === "nao" || ans.reserva === "<3") why.push("Primeiro passo: formar a reserva de emergência no Tesouro Selic ou em CDB de liquidez diária.");
-  if (ans.exp === "nenhuma") why.push("Como você está começando, comece pela renda fixa e entre aos poucos nas demais classes.");
-  return { score, idx, name: P.n, desc: P.d, alloc: a, why };
+  if (L("prazo").includes("<1")) cap(0, "Você precisa do dinheiro em menos de 1 ano: o certo é segurança e liquidez.");
+  if (L("perda").includes("2")) cap(0, "Você só tolera perder até 2% no ano.");
+  else if (L("perda").includes("5")) cap(1, "Você tolera perder até 5% no ano: limitei a renda variável.");
+  else if (L("perda").includes("10")) cap(1, "Você tolera perder até 10% no ano: limitei a renda variável.");
+  const semReserva = L("reserva").includes("nao") || L("reserva").includes("<3");
+  if (semReserva) cap(2, "Sua reserva de emergência ainda não está completa: complete antes de assumir mais risco.");
+  if (L("dep").includes("sim")) cap(1, "Você pode precisar do dinheiro antes: prefira liquidez.");
+  const P = PROFILES[idx], al = { ...P.a }, mv = (from, to, n) => { const x = Math.min(n, al[from]); al[from] -= x; al[to] += x; };
+  const mensal = L("renda").includes("mensal"), cresc = L("renda").includes("cresc");
+  if (mensal && !cresc) mv("acao", "fii", 3); if (cresc && !mensal) mv("fii", "acao", 3);
+  const eN = L("ext").includes("nao"), eP = L("ext").includes("pouco"), eS = L("ext").includes("sim");
+  if (eN && !eP && !eS) mv("ext", idx <= 1 ? "selic" : "acao", al.ext); else if (eS && !eN) mv("selic", "ext", 3);
+  if (L("prazo").includes(">10") && idx >= 2) why.push("Seu prazo é longo: ações e FIIs têm tempo de se recuperar de quedas.");
+  if (L("obj").includes("rapido")) why.push("Querer ganhar mais rápido significa aceitar mais oscilação. Não existe retorno alto sem risco e o Alfred não promete isso.");
+  if (semReserva) why.push("Primeiro passo: formar a reserva de emergência no Tesouro Selic ou em CDB de liquidez diária.");
+  if (L("exp").includes("nenhuma")) why.push("Como você está começando, comece pela renda fixa e entre aos poucos nas demais classes.");
+  if (Object.values(ans).some((v) => qList(v).length > 1)) why.push("Você marcou duas opções em algumas perguntas: o perfil considera a média delas e respeita o limite mais cauteloso.");
+  return { score, idx, name: P.n, desc: P.d, alloc: al, why };
 }
 function vPerfil() {
   const ans = store.get("quiz", {}), done = store.get("perfil", null), step = QUIZ.findIndex((q) => !ans[q.k]);
@@ -665,11 +673,25 @@ function vPerfil() {
     <p class="warn">Questionário de perfil (suitability) simplificado, parecido com o das corretoras. É um ponto de partida para estudo e não substitui orientação de um profissional credenciado. As respostas ficam só neste aparelho.</p>`;
   }
   const i = step === -1 ? 0 : step, q = QUIZ[i];
+  if (quizDraft.k !== q.k) quizDraft = { k: q.k, v: [] };
+  const sel = quizDraft.v;
   return `<button class="back" data-go="#/carteira">${ic("back", "sm")} Carteira</button>${secTitle(`Pergunta ${i + 1} de ${QUIZ.length}`)}<div class="bar" style="height:6px"><i style="width:${(i / QUIZ.length) * 100}%;background:var(--gold)"></i></div>
-  <div class="card" style="margin-top:12px"><div style="font-size:19px;font-weight:800;line-height:1.3;letter-spacing:-.01em;margin-bottom:12px">${q.q}</div>${q.o.map((o) => `<button class="btn ghost" data-ans="${q.k}|${o[0]}" style="text-align:left;margin-top:8px;font-weight:700">${esc(o[1])}</button>`).join("")}</div>${i > 0 ? `<button class="back" id="q-prev">${ic("back", "sm")} Pergunta anterior</button>` : ""}`;
+  <div class="card" style="margin-top:12px"><div style="font-size:19px;font-weight:800;line-height:1.3;letter-spacing:-.01em;margin-bottom:4px">${q.q}</div><div class="mut" style="font-size:13px;margin-bottom:6px">Marque até 2 opções.</div>${q.o.map((o) => `<button class="btn ghost opt${sel.includes(o[0]) ? " sel" : ""}" data-opt="${q.k}|${o[0]}" style="text-align:left;margin-top:8px;font-weight:700"><span class="ck">${sel.includes(o[0]) ? "✓" : ""}</span><span style="flex:1">${esc(o[1])}</span></button>`).join("")}<button class="btn" id="q-next" ${sel.length ? "" : "disabled"}>${i === QUIZ.length - 1 ? "Ver meu perfil" : "Continuar"}</button></div>${i > 0 ? `<button class="back" id="q-prev">${ic("back", "sm")} Pergunta anterior</button>` : ""}`;
 }
 function bindPerfil() {
-  document.querySelectorAll("[data-ans]").forEach((b) => b.addEventListener("click", () => { const [k, v] = b.dataset.ans.split("|"), a = store.get("quiz", {}); a[k] = v; store.set("quiz", a); if (QUIZ.every((q) => a[q.k])) { store.set("perfil", { at: Date.now() }); store.set("metas", profileOf(a).alloc); toast("Perfil pronto: metas da carteira geradas."); } render(); }));
+  document.querySelectorAll("[data-opt]").forEach((b) => b.addEventListener("click", () => {
+    const [k, v] = b.dataset.opt.split("|"); if (quizDraft.k !== k) quizDraft = { k, v: [] };
+    const d = quizDraft.v, ix = d.indexOf(v);
+    if (ix >= 0) d.splice(ix, 1); else if (d.length >= 2) return toast("No máximo 2 opções."); else d.push(v);
+    document.querySelectorAll("[data-opt]").forEach((x) => { const on = d.includes(x.dataset.opt.split("|")[1]); x.classList.toggle("sel", on); x.querySelector(".ck").textContent = on ? "✓" : ""; });
+    const nx = $("#q-next"); if (nx) nx.disabled = !d.length;
+  }));
+  $("#q-next")?.addEventListener("click", () => {
+    const d = quizDraft.v; if (!d.length) return;
+    const a = store.get("quiz", {}); a[quizDraft.k] = [...d]; store.set("quiz", a); quizDraft = { k: "", v: [] };
+    if (QUIZ.every((q) => a[q.k])) { store.set("perfil", { at: Date.now() }); store.set("metas", profileOf(a).alloc); toast("Perfil pronto: metas da carteira geradas."); }
+    render();
+  });
   $("#q-prev")?.addEventListener("click", () => { const a = store.get("quiz", {}), last = [...QUIZ].reverse().find((q) => a[q.k]); if (last) delete a[last.k]; store.set("quiz", a); store.set("perfil", null); render(); });
   $("#q-redo")?.addEventListener("click", () => { store.set("quiz", {}); store.set("perfil", null); render(); });
   $("#q-share")?.addEventListener("click", async () => {

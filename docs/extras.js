@@ -35,7 +35,7 @@ export function makeExtras(c) {
 
   // ------------------------------------------------------------ saúde da carteira (5 pilares, nota de 0 a 1000) e teste de estresse
   const SHOCKS = { hoje: ["Hoje (26/10) se repetisse", [0, -0.05, 0, -0.08, -0.16, 0.10]], seg: ["Uma segunda queda (mais 15% a 20%)", [0, -0.08, 0, -0.15, -0.30, 0.08]], mar: ["Colapso como março de 2020", [0, -0.10, -0.005, -0.30, -0.46, 0]] };
-  function lossTolerance() { const q = store.get("quiz", {}); const m = { "2": 2, "5": 5, "10": 10, "20": 20 }; return m[q.perda] ?? 10; }
+  function lossTolerance() { const q = store.get("quiz", {}), m = { "2": 2, "5": 5, "10": 10, "20": 20 }, l = [].concat(q.perda ?? []).map((v) => m[v]).filter((v) => v != null); return l.length ? Math.min(...l) : 10; }
   function health(pos) {
     const { by, total } = totals(pos); if (!total) return null;
     const w = Object.fromEntries(KEYS.map((k) => [k, by[k] / total]));

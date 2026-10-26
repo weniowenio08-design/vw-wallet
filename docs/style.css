@@ -200,3 +200,10 @@ details.lesson .btn{margin:0 16px 16px}
 
 /* ---- v1.3: painéis clicáveis ---- */
 .kpi[data-go]{cursor:pointer}
+
+/* ---- v1.4: perguntas com até 2 respostas ---- */
+.btn.opt{justify-content:flex-start;gap:12px}
+.btn.opt .ck{flex:none;width:22px;height:22px;border-radius:7px;border:2px solid var(--mut);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:var(--goldink)}
+.btn.opt.sel{background:color-mix(in srgb,var(--gold) 28%,var(--chip));outline:2px solid var(--gold)}
+.btn.opt.sel .ck{background:var(--gold);border-color:var(--gold);color:#3A2E00}
+.btn:disabled{opacity:.4;cursor:default}
