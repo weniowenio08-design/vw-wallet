@@ -257,14 +257,14 @@ function hydrate(root) {
     if (c) el.innerHTML = spark(c, el.dataset.up === "1");
   });
 }
-const kpi = (l, v, d) => `<div class="kpi"><small>${l}</small><b class="num">${v}</b>${d != null ? `<i class="${cl(d)} num">${pct(d)}</i>` : ""}</div>`;
+const kpi = (l, v, d, key) => `<div class="kpi"${key ? ` data-go="#/indice/${key}"` : ""}><small>${l}</small><b class="num">${v}</b>${d != null ? `<i class="${cl(d)} num">${pct(d)}</i>` : ""}</div>`;
 const secTitle = (t, right = "") => `<h2><span>${t}</span>${right}</h2>`;
 
 // ------------------------------------------------------------------ HOJE
 function vHoje() {
   const s = D.summary, R = REGIME[s.regime.level], c = s.context, m = s.macro, fav = favs();
   let h = dados.backupBanner() + X.aporteBanner() + sinaisCard(posLive(), true) + `<div class="banner ${s.regime.level}"><b>${R.t}</b><span>${esc(s.regime.why)}. ${R.d}</span></div>`;
-  h += secTitle("Panorama") + `<div class="strip">${kpi("Selic", m.selic != null ? fN(m.selic) + "%" : "—")}${kpi("CDI", m.cdi != null ? fN(m.cdi) + "%" : "—")}${kpi("IPCA 12m", m.ipca12 != null ? fN(m.ipca12) + "%" : "—")}${kpi("Dólar", c.usd ? "R$ " + fN(c.usd.p) : "—", c.usd?.d1)}${kpi("Ibovespa", c.ibov ? fN(c.ibov.p, 0) : "—", c.ibov?.d1)}${kpi("S&P 500", c.sp500 ? fN(c.sp500.p, 0) : "—", c.sp500?.d1)}</div>`;
+  h += secTitle("Panorama") + `<div class="strip">${kpi("Selic", m.selic != null ? fN(m.selic) + "%" : "—", null, "selic")}${kpi("CDI", m.cdi != null ? fN(m.cdi) + "%" : "—", null, "cdi")}${kpi("IPCA 12m", m.ipca12 != null ? fN(m.ipca12) + "%" : "—", null, "ipca12")}${kpi("Dólar", c.usd ? "R$ " + fN(c.usd.p) : "—", c.usd?.d1, "usd")}${kpi("Ibovespa", c.ibov ? fN(c.ibov.p, 0) : "—", c.ibov?.d1, "ibov")}${kpi("S&P 500", c.sp500 ? fN(c.sp500.p, 0) : "—", c.sp500?.d1, "sp500")}</div>`;
   h += X.focusCard() + X.tesouroCard();
   if (D.digest?.text) h += secTitle("Resumo do dia") + `<div class="card" style="line-height:1.5;font-size:14.5px">${esc(D.digest.text).replace(/\n/g, "<br>")}</div>`;
   const fl = D.assets.filter((a) => fav.has(a.sym));
@@ -286,10 +286,10 @@ const typeOk = (a) => mkType === "todos" || (mkType === "fav" ? favs().has(a.sym
 function vMercado() {
   const s = D.summary, c = s.context, pool = D.assets.filter(typeOk);
   const byD = [...pool].sort((a, b) => b.d1 - a.d1), list = mkTab === "altas" ? byD.slice(0, 6) : byD.slice(-6).reverse();
-  let h = secTitle("Maiores movimentos do dia") + `<div class="seg"><button data-mk="altas" class="${mkTab === "altas" ? "on" : ""}">${ic("down", "sm")} Maiores altas</button><button data-mk="baixas" class="${mkTab === "baixas" ? "on" : ""}">Maiores quedas</button></div>`;
+  let h = secTitle(mkTab === "ofertas" ? "Boas ofertas" : "Maiores movimentos do dia") + `<div class="seg"><button data-mk="altas" class="${mkTab === "altas" ? "on" : ""}">${ic("down", "sm")} Maiores altas</button><button data-mk="baixas" class="${mkTab === "baixas" ? "on" : ""}">Maiores quedas</button><button data-mk="ofertas" class="${mkTab === "ofertas" ? "on" : ""}">Boas ofertas</button></div>`;
   h += `<div class="fchips">${[["todos", "Todos"], ["acao", "Ações"], ["fii", "FIIs"], ["etf", "ETFs"], ["fav", "Favoritos"]].map(([k, t]) => `<button data-mt="${k}" class="${mkType === k ? "on" : ""}">${t}</button>`).join("")}</div>`;
-  h += `<div class="card">${list.length ? list.map((a) => row(a)).join("") : '<div class="empty">Nada por aqui. Toque na estrela de um ativo para favoritar.</div>'}</div>`;
-  h += secTitle("Contexto") + `<div class="strip">${["ibov", "usd", "sp500", "ust10", "brent", "gold"].filter((k) => c[k]).map((k) => kpi(c[k].name, fN(c[k].p, k === "ibov" ? 0 : 2), c[k].d1)).join("")}</div>`;
+  h += mkTab === "ofertas" ? boasOfertas(pool) : `<div class="card">${list.length ? list.map((a) => row(a)).join("") : '<div class="empty">Nada por aqui. Toque na estrela de um ativo para favoritar.</div>'}</div>`;
+  h += secTitle("Contexto") + `<div class="strip">${["ibov", "usd", "sp500", "ust10", "brent", "gold"].filter((k) => c[k]).map((k) => kpi(c[k].name, fN(c[k].p, k === "ibov" ? 0 : 2), c[k].d1, k)).join("")}</div>`;
   if (s.avoid.length) h += secTitle("Evitar por enquanto") + `<div class="card">${s.avoid.map((a) => row(a, true)).join("")}</div>`;
   const all = [...pool].sort(SORTS[mkSort][1]);
   h += secTitle("Todos os ativos vigiados", `<label class="sel">${ic("filter", "sm")}<select id="mk-sort">${Object.entries(SORTS).map(([k, [t]]) => `<option value="${k}" ${mkSort === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>`) + `<div class="card">${(mkAll ? all : all.slice(0, 12)).map((a) => row(a)).join("")}${all.length > 12 && !mkAll ? `<button class="btn ghost" id="mk-more" style="margin:8px 0 2px">Mostrar todos (${all.length})</button>` : ""}</div>`;
@@ -348,17 +348,19 @@ async function chartPoints(sym) {
     return { pts, intra: true };
   }
   const daily = await series(sym); if (!daily) return null;
-  const n = range === "1m" ? 22 : range === "1y" ? 252 : daily.c.length, from = Math.max(0, daily.c.length - n), pts = [];
+  const n = range === "1m" ? 22 : range === "1y" ? (IDX[sym]?.monthly ? 12 : 252) : daily.c.length, from = Math.max(0, daily.c.length - n), pts = [];
   for (let i = from; i < daily.c.length; i++) pts.push({ v: daily.c[i], l: dayLbl(daily.t[i]), x: range === "5y" ? daily.t[i].slice(5, 7) + "/" + daily.t[i].slice(2, 4) : daily.t[i].slice(8) + "/" + daily.t[i].slice(5, 7), i });
   const sm = pts.map((p) => (p.i >= 199 ? daily.c.slice(p.i - 199, p.i + 1).reduce((x, y) => x + y, 0) / 200 : null));
   return { pts, sm, hi: Math.max(...daily.c.slice(-252)), intra: false };
 }
-async function drawChart(sym) {
-  const el = $("#chart"), a = asset(sym); if (!el) return;
+async function drawChart(sym, meta) {
+  const el = $("#chart"), a = meta ? null : asset(sym); if (!el) return;
   const R = await chartPoints(sym);
   if (!R || R.pts.length < 2) { el.innerHTML = `<text x="180" y="115" text-anchor="middle" fill="var(--mut)" font-size="12">Sem dados para esta faixa</text>`; return; }
-  const c = R.pts.map((p) => p.v), smv = (R.sm || []).filter((x) => x != null), showRef = R.intra || range !== "5y";
-  const mn = Math.min(...c, ...smv), mx = Math.max(...c, ...smv, !R.intra && showRef ? R.hi : 0), W = 360, H = 230, pl = 6, pr = 6, pt = 14, pb = 22;
+  if (meta) R.sm = null;
+  const c = R.pts.map((p) => p.v), smv = (R.sm || []).filter((x) => x != null), showRef = !meta && (R.intra || range !== "5y");
+  let mn = Math.min(...c, ...smv), mx = Math.max(...c, ...smv, !R.intra && showRef ? R.hi : 0); const W = 360, H = 230, pl = 6, pr = 6, pt = 14, pb = 22;
+  if (mx - mn < Math.abs(mx) * 0.002) { const pad = Math.max(Math.abs(mx) * 0.01, 0.1); mn -= pad; mx += pad; } // série sem variação: linha no meio
   const X = (i) => pl + (i / (c.length - 1)) * (W - pl - pr), Y = (v) => pt + (1 - (v - mn) / (mx - mn || 1)) * (H - pt - pb);
   const up = c[c.length - 1] >= c[0], col = up ? "var(--up)" : "var(--down)";
   const line = c.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(""), area = `${line}L${X(c.length - 1).toFixed(1)},${H - pb}L${X(0).toFixed(1)},${H - pb}Z`;
@@ -371,16 +373,57 @@ async function drawChart(sym) {
   <text x="${pl + 2}" y="${H - 6}" fill="var(--mut)" font-size="9">${R.pts[0].x}</text><text x="${W - pr - 2}" y="${H - 6}" text-anchor="end" fill="var(--mut)" font-size="9">${R.pts[R.pts.length - 1].x}</text>
   <g id="xh" style="display:none"><line id="xl" y1="${pt}" y2="${H - pb}" stroke="var(--mut)" stroke-width="1" vector-effect="non-scaling-stroke"/><circle id="xc" r="4.5" fill="${col}" stroke="var(--card)" stroke-width="2"/></g>`;
   const total = c[c.length - 1] / c[0] - 1;
-  const base = () => { $("#cv-price").textContent = "R$ " + fN(a.p); $("#cv-date").textContent = ""; $("#cv-chg").textContent = pct(total) + " no período"; $("#cv-chg").className = "num " + cl(total); };
+  const fv = meta ? meta.fmt : (v) => "R$ " + fN(v), cur = meta ? c[c.length - 1] : a.p;
+  const base = () => { $("#cv-price").textContent = fv(cur); $("#cv-date").textContent = ""; $("#cv-chg").textContent = pct(total) + " no período"; $("#cv-chg").className = "num " + cl(total); };
   base();
   const move = (ev) => {
     const r = el.getBoundingClientRect(), x = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)), i = Math.round(x * (c.length - 1));
     $("#xh").style.display = ""; $("#xl").setAttribute("x1", X(i)); $("#xl").setAttribute("x2", X(i)); $("#xc").setAttribute("cx", X(i)); $("#xc").setAttribute("cy", Y(c[i]));
-    $("#cv-price").textContent = "R$ " + fN(c[i]); $("#cv-date").textContent = R.pts[i].l;
+    $("#cv-price").textContent = fv(c[i]); $("#cv-date").textContent = R.pts[i].l;
     const ch = c[i] / c[0] - 1; $("#cv-chg").textContent = pct(ch) + " no período"; $("#cv-chg").className = "num " + cl(ch);
   };
   const end = () => { $("#xh").style.display = "none"; base(); };
   el.onpointermove = move; el.onpointerdown = move; el.onpointerleave = end; el.onpointerup = end;
+}
+
+// ------------------------------------------------------------------ INDICADORES DO PANORAMA (toque para ver o gráfico)
+const R_DAY = ["24h", "2d", "1w", "1m", "1y", "5y"], R_MAC = ["1m", "1y", "5y"];
+const IDX = {
+  selic: { n: "Selic", sub: "Taxa básica de juros, % ao ano", fmt: (v) => fN(v) + "%", ranges: R_MAC, def: "1y", note: "Definida pelo Copom a cada cerca de 45 dias. Fonte: Banco Central. Selic alta faz a renda fixa render mais." },
+  cdi: { n: "CDI", sub: "Taxa dos bancos entre si, % ao ano", fmt: (v) => fN(v) + "%", ranges: R_MAC, def: "1y", note: "Anda quase igual à Selic. É a régua do CDB: “100% do CDI” rende como ela. Fonte: Banco Central." },
+  ipca12: { n: "IPCA em 12 meses", sub: "Inflação acumulada, % (um ponto por mês)", fmt: (v) => fN(v) + "%", monthly: true, ranges: ["1y", "5y"], def: "1y", note: "Inflação oficial do Brasil. Para render de verdade, o investimento precisa passar dela. Fonte: IBGE, via Banco Central." },
+  usd: { n: "Dólar", sub: "Cotação em reais", fmt: (v) => "R$ " + fN(v), ranges: R_DAY, def: "1m", note: "O dólar sobe quando o mercado teme o Brasil ou os juros nos EUA. Pode ter atraso de alguns minutos." },
+  ibov: { n: "Ibovespa", sub: "Índice da bolsa brasileira, pontos", fmt: (v) => fN(v, 0), ranges: R_DAY, def: "1m", note: "Média das principais ações da B3. Dados com atraso." },
+  sp500: { n: "S&P 500", sub: "Índice da bolsa dos EUA, pontos", fmt: (v) => fN(v, 0), ranges: R_DAY, def: "1m", note: "As 500 maiores empresas dos EUA. Dados com atraso." },
+  ust10: { n: "Juros dos EUA (10 anos)", sub: "% ao ano", fmt: (v) => fN(v) + "%", ranges: R_DAY, def: "1m", note: "Quando sobe, o dinheiro tende a sair de países como o Brasil." },
+  brent: { n: "Petróleo Brent", sub: "US$ por barril", fmt: (v) => "US$ " + fN(v), ranges: R_DAY, def: "1m", note: "Referência mundial do petróleo. Influencia a Petrobras e a inflação." },
+  gold: { n: "Ouro", sub: "US$ por onça", fmt: (v) => "US$ " + fN(v, 0), ranges: R_DAY, def: "1m", note: "Costuma subir quando o mundo está inseguro." },
+};
+function vIndice(key) {
+  const m = IDX[key], back = `<button class="back" id="idx-back">${ic("back", "sm")} Voltar</button>`;
+  if (!m) return back + '<div class="empty">Indicador não encontrado.</div>';
+  if (!m.ranges.includes(range)) range = m.def;
+  return `${back}<div class="card"><div class="tk" style="font-size:22px;font-weight:800">${esc(D.summary.context?.[key]?.name || m.n)}</div><div class="mut" style="font-size:13px">${esc(m.sub)}</div>
+  <div class="cv" style="margin-top:14px"><div class="big num" id="cv-price">—</div><div class="num" id="cv-chg" style="font-weight:700"></div></div>
+  <div class="mut num" id="cv-date" style="font-size:12px;height:16px"></div>
+  <svg class="chart" id="chart" viewBox="0 0 360 230" preserveAspectRatio="none"></svg>
+  <div class="seg" style="margin-top:10px">${RANGES.filter(([n]) => m.ranges.includes(n)).map(([n, t]) => `<button data-range="${n}" class="${range === n ? "on" : ""}" style="padding:8px 2px;font-size:12.5px">${t}</button>`).join("")}</div></div>
+  <p class="warn">${esc(m.note)} Toque no gráfico e arraste para ver cada dia.</p>`;
+}
+
+// ------------------------------------------------------------------ BOAS OFERTAS (aba do Mercado)
+function boasOfertas(pool) {
+  const qa = store.get("quiz", {}), done = QUIZ.every((q) => qa[q.k]), T = done ? profileOf(qa).alloc : null, regime = D.summary.regime.level;
+  const cls = (a) => (a.type === "acao" ? "acao" : a.type === "fii" ? "fii" : "ext");
+  const good = pool.filter((a) => a.core && (!T || T[cls(a)] > 0) && (["oferta", "aguardar"].includes(a.label) || (a.label === "observar" && a.score >= 60))).sort((a, b) => b.score - a.score);
+  const now = good.filter((a) => a.label === "oferta"), wait = good.filter((a) => a.label === "aguardar"), obs = good.filter((a) => a.label === "observar");
+  const meta = (a) => [a.pvp != null ? `P/VP ${fN(a.pvp, 2)}` : null, a.dy ? `DY ${fN(a.dy * 100, 1)}%` : null, `${fN(Math.abs(a.dd) * 100, 0)}% abaixo da máxima`, `RSI ${fN(a.rsi, 0)}`].filter(Boolean).join(" · ");
+  const line = (a) => `<div class="row" data-go="#/ativo/${a.sym}">${logo(a.sym)}<div class="grow"><div class="tk">${a.sym}${BADGE[a.label] || ""}</div><div class="nm">${esc(a.name)}</div><div class="mut" style="font-size:12px;margin-top:3px">${esc(meta(a))}</div></div><div class="px num"><b>${fN(a.p)}</b><i class="${cl(a.d1)}">${pct(a.d1)}</i></div><span class="score">${a.score}</span></div>`;
+  let h = `<div class="card" style="font-size:13.5px;line-height:1.5">Empresas e fundos de qualidade que caíram o bastante para o preço ficar atraente. ${T ? "Filtrado pelas classes do seu perfil." : "Responda o perfil de investidor para filtrar pelo seu perfil."} O número à direita é a nota do Alfred (0 a 100).</div>`;
+  h += secTitle("Boa hora de comprar") + `<div class="card">${now.length ? now.map(line).join("") : `<div class="empty">${regime === "estresse" ? "Nenhuma agora: o mercado está em estresse e o Alfred prefere esperar. Veja as que estão em espera abaixo." : "Nenhuma agora. O Alfred avisa no celular quando surgir."}</div>`}</div>`;
+  if (wait.length) h += secTitle("Boas, mas em espera") + `<div class="card"><div class="mut" style="font-size:13px;line-height:1.5;margin-bottom:4px">Passam nos critérios, mas o mercado está agitado. Entram na lista de compra quando acalmar.</div>${wait.map(line).join("")}</div>`;
+  if (obs.length) h += secTitle("Para ficar de olho") + `<div class="card">${obs.slice(0, 6).map(line).join("")}</div>`;
+  return h + `<p class="warn">Regras objetivas (queda da máxima, RSI, média de 200 dias, qualidade, P/VP dos FIIs). Material de estudo, não recomendação personalizada: confira preço e taxas na sua corretora.</p>`;
 }
 
 // ------------------------------------------------------------------ CARTEIRA
@@ -679,7 +722,7 @@ function renderSearch() {
 // ------------------------------------------------------------------ roteador
 async function render() {
   const view = $("#view"), hash = location.hash || "#/hoje", [, route, arg] = hash.split("/");
-  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (route === "ativo" ? "hoje" : route === "perfil" || route === "recomendar" ? "carteira" : route === "ferramentas" || route === "aprender" ? "mais" : route)));
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (route === "ativo" || route === "indice" ? "hoje" : route === "perfil" || route === "recomendar" ? "carteira" : route === "ferramentas" || route === "aprender" ? "mais" : route)));
   if (!D.summary) { view.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>'; return; }
   const s = D.summary; $("#upd").textContent = `Investments · ${ago(s.updated)}`;
   const rg = $("#regime"); rg.className = "pill " + s.regime.level; rg.textContent = REGIME[s.regime.level].p;
@@ -693,6 +736,11 @@ async function render() {
     $("#addpos")?.addEventListener("click", () => { const a = asset(arg); store.set("prefill", { sym: a.sym, type: a.type }); location.hash = "#/carteira"; });
     const rc = store.get("recent", []).filter((x) => x !== arg); rc.unshift(arg); store.set("recent", rc.slice(0, 8));
   } else if (route === "perfil") { view.innerHTML = vPerfil(); bindPerfil(); }
+  else if (route === "indice") {
+    view.innerHTML = vIndice(arg); drawChart(arg, IDX[arg]);
+    $("#idx-back")?.addEventListener("click", () => history.back());
+    view.querySelectorAll("[data-range]").forEach((b) => b.addEventListener("click", () => { range = b.dataset.range; view.querySelectorAll("[data-range]").forEach((x) => x.classList.toggle("on", x === b)); drawChart(arg, IDX[arg]); }));
+  }
   else if (route === "recomendar") { view.innerHTML = vRecomendar(); bindRecomendar(); }
   else if (route === "mercado") { view.innerHTML = vMercado(); hydrate(view);
     view.querySelectorAll("[data-mk]").forEach((b) => b.addEventListener("click", () => { mkTab = b.dataset.mk; render(); }));

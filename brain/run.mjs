@@ -367,6 +367,15 @@ async function main() {
     data: selic?.at(-1)?.d ?? null,
   };
 
+  // séries do Banco Central para os gráficos do panorama (Selic, CDI, IPCA em 12 meses)
+  for (const [key, code] of [["selic", 432], ["cdi", 4389], ["ipca12", 13522]]) {
+    try {
+      const d0 = new Date(Date.now() - 5 * 365.25 * 864e5), f = `${String(d0.getUTCDate()).padStart(2, "0")}/${String(d0.getUTCMonth() + 1).padStart(2, "0")}/${d0.getUTCFullYear()}`;
+      const j = await get(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${code}/dados?formato=json&dataInicial=${f}`, 2);
+      const hoje = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10), jj = j.filter((x) => x.data.split("/").reverse().join("-") <= hoje), s = { t: jj.map((x) => x.data.split("/").reverse().join("-")), c: jj.map((x) => parseFloat(x.valor)) };
+      if (s.c.length > 1) await fs.writeFile(path.join(OUT, "series", key + ".json"), JSON.stringify(s));
+    } catch (e) { log("série macro falhou", key, e.message); }
+  }
   macro.focus = focusD; macro.tesouro = tes ? tesRef(tes) : null;
   const nw = await news(assets);
   const byD1 = [...assets].sort((x, y) => y.d1 - x.d1);

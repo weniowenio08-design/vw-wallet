@@ -197,3 +197,6 @@ details.lesson summary::after{content:"+";font-size:22px;font-weight:400;color:v
 details.lesson[open] summary::after{content:"–"}
 details.lesson p{margin:0;padding:0 16px 10px;line-height:1.6;font-size:14.5px;color:var(--ink)}
 details.lesson .btn{margin:0 16px 16px}
+
+/* ---- v1.3: painéis clicáveis ---- */
+.kpi[data-go]{cursor:pointer}
