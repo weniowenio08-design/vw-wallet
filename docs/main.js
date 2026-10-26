@@ -95,10 +95,9 @@ const asset = (sym) => D.assets.find((a) => a.sym === sym);
 // posição = { id, cls, sym, plat, value (valor investido), bp (preço pago por cota), q (quantidade) }. Com q e bp o valor atual acompanha o preço do ativo.
 const priceOf = (sym) => (sym === "USD" ? D.summary?.context?.usd?.p : asset(sym)?.p); // "USD" = dólar comprado como moeda
 const curVal = (p) => { const px = p.sym && p.q ? priceOf(p.sym) : null; return px ? p.q * px : p.value; };
-// aporte: valor base mensal (R$ 1.000) e exceções por mês. Outubro/2026 foi combinado em R$ 1.500; em novembro volta sozinho ao valor base.
-const AP_PLANO = { "2026-10": 1500 };
+// aporte: valor base mensal e exceções por mês (quando o valor de um mês é diferente, vale só naquele mês).
 const aporteBase = () => store.get("aporte", 1000);
-const aporteMes = () => { const k = todayBRT().slice(0, 7); return store.get("aporteMes", {})[k] ?? AP_PLANO[k] ?? aporteBase(); };
+const aporteMes = () => { const k = todayBRT().slice(0, 7); return store.get("aporteMes", {})[k] ?? aporteBase(); };
 const setAporteMes = (v) => { const k = todayBRT().slice(0, 7), o = store.get("aporteMes", {}); o[k] = v; store.set("aporteMes", o); };
 const posLive = () => store.get("posicoes", []).map((p) => ({ ...p, inv: p.value, value: curVal(p) }));
 
@@ -170,7 +169,17 @@ function suggestBox(inputEl, onPick) {
   box.addEventListener("pointerdown", (e) => { const b = e.target.closest("button"); if (!b) return; e.preventDefault(); inputEl.value = b.dataset.p; box.style.display = "none"; onPick?.(b.dataset.p); });
   inputEl.addEventListener("blur", () => setTimeout(() => (box.style.display = "none"), 120));
 }
-const myPlats = () => store.get("plats", ["XP Investimentos", "Revolut"]);
+const myPlats = () => store.get("plats", []);
+// Migração única: quem já usava o app antes da v1.5 mantém as plataformas e o aporte de outubro que tinha; quem chega agora começa limpo.
+function migrate() {
+  if (store.get("mig2", null)) return;
+  const had = store.get("posicoes", []).length || Object.keys(store.get("quiz", {})).length || store.get("ntfy", "") || store.get("metas", null);
+  if (had) {
+    if (store.get("plats", null) == null) store.set("plats", ["XP Investimentos", "Revolut"]);
+    const o = store.get("aporteMes", {}); if (o["2026-10"] == null) { o["2026-10"] = 1500; store.set("aporteMes", o); }
+  }
+  store.set("mig2", 1);
+}
 
 // ------------------------------------------------------------------ DICIONÁRIO (toque no "?" ao lado da sigla)
 const GLOSS = {
@@ -276,7 +285,7 @@ const secTitle = (t, right = "") => `<h2><span>${t}</span>${right}</h2>`;
 // ------------------------------------------------------------------ HOJE
 function vHoje() {
   const s = D.summary, R = REGIME[s.regime.level], c = s.context, m = s.macro, fav = favs();
-  let h = dados.backupBanner() + X.aporteBanner() + sinaisCard(posLive(), true) + `<div class="banner ${s.regime.level}"><b>${R.t}</b><span>${esc(s.regime.why)}. ${R.d}</span></div>`;
+  let h = welcomeCard() + dados.backupBanner() + X.aporteBanner() + sinaisCard(posLive(), true) + `<div class="banner ${s.regime.level}"><b>${R.t}</b><span>${esc(s.regime.why)}. ${R.d}</span></div>`;
   h += secTitle("Panorama") + `<div class="strip">${kpi("Selic", m.selic != null ? fN(m.selic) + "%" : "—", null, "selic")}${kpi("CDI", m.cdi != null ? fN(m.cdi) + "%" : "—", null, "cdi")}${kpi("IPCA 12m", m.ipca12 != null ? fN(m.ipca12) + "%" : "—", null, "ipca12")}${kpi("Dólar", c.usd ? "R$ " + fN(c.usd.p) : "—", c.usd?.d1, "usd")}${kpi("Ibovespa", c.ibov ? fN(c.ibov.p, 0) : "—", c.ibov?.d1, "ibov")}${kpi("S&P 500", c.sp500 ? fN(c.sp500.p, 0) : "—", c.sp500?.d1, "sp500")}</div>`;
   h += X.focusCard() + X.tesouroCard();
   if (D.digest?.text) h += secTitle("Resumo do dia") + `<div class="card" style="line-height:1.5;font-size:14.5px">${esc(D.digest.text).replace(/\n/g, "<br>")}</div>`;
@@ -724,7 +733,7 @@ function bindPerfil() {
 // ------------------------------------------------------------------ MAIS
 function vMais() {
   const T = { ...DEF_T, ...store.get("metas", {}) }, b = D.backtest, topic = store.get("ntfy", ""), pl = myPlats();
-  let h = secTitle(`${ic("bell", "sm")} Notificações no celular`) + `<div class="card" style="line-height:1.55;font-size:14.5px">Para o VW Wallet avisar com o app fechado:<br>1. Instale o app <b>ntfy</b> (Play Store ou F-Droid).<br>2. Toque em <b>+</b> e assine o tópico secreto abaixo.<br>3. Nos Ajustes do Oppo, deixe o ntfy sem restrição de bateria e com início automático.<label>Seu tópico secreto</label><input id="ntfy" value="${esc(topic)}" placeholder="cole o tópico que o Alfred gerou"><button class="btn ghost" id="ntf-perm">Permitir avisos também aqui no app</button></div>`;
+  let h = shareCard() + secTitle(`${ic("bell", "sm")} Notificações no celular`) + `<div class="card" style="line-height:1.55;font-size:14.5px">Para o VW Wallet avisar com o app fechado:<br>1. Instale o app <b>ntfy</b> (Play Store, F-Droid ou App Store).<br>2. Toque em <b>+</b> e assine o tópico secreto abaixo.<br>3. Nos Ajustes do Oppo, deixe o ntfy sem restrição de bateria e com início automático.<label>Seu tópico secreto</label><input id="ntfy" value="${esc(topic)}" placeholder="cole o tópico que o Alfred gerou"><div id="ntf-links"></div><button class="btn ghost" id="ntf-perm">Permitir avisos também aqui no app</button></div>`;
   h += secTitle(`${ic("wallet", "sm")} Minhas plataformas`) + `<div class="card"><div class="chips" id="pl-chips" style="margin:0 0 10px">${pl.map((p) => `<span class="chip on">${esc(p)} <button data-rmpl="${esc(p)}" aria-label="Remover" style="border:0;background:none;color:inherit;font-weight:800;cursor:pointer">×</button></span>`).join("") || '<span class="mut">Nenhuma ainda.</span>'}</div><label>Adicionar plataforma (digite as primeiras letras)</label><div><input id="pl-in" placeholder="ex.: xp, nu, rico, revolut…" autocomplete="off"></div><div class="mut" style="font-size:12px;margin-top:8px;line-height:1.5">O app mostra, para cada classe, em quais das suas plataformas dá para comprar. Confirme no app de cada uma: as ofertas mudam.</div></div>`;
   h += secTitle(`${ic("target", "sm")} Metas da carteira (%)`) + `<div class="card"><button class="btn" id="meta-auto" style="margin-top:0">${ic("user", "sm")} Gerar metas pelo meu perfil</button><div class="mut" style="font-size:12px;margin-top:6px">Ou ajuste à mão (a soma vira 100%):</div><div class="grid2">${CLS.map(([k, n]) => `<div><label>${n}</label><input data-meta="${k}" inputmode="decimal" value="${T[k]}"></div>`).join("")}</div><button class="btn ghost" id="meta-save">Salvar metas</button></div>`;
   h += secTitle(`${ic("book", "sm")} O que o histórico mostra`) + `<div class="card" style="font-size:14.5px;line-height:1.55">`;
@@ -733,11 +742,11 @@ function vMais() {
   h += X.maisExtras();
   h += secTitle(`${ic("book", "sm")} Dicionário do investidor`) + `<div class="card"><input id="dic-q" placeholder="Buscar: CDB, Selic, FII, RSI…" autocomplete="off"><div id="dic-list" style="margin-top:8px">${vDicionario()}</div></div>`;
   h += secTitle(`${ic("shield", "sm")} Meus dados e backup`) + dados.dadosCard();
-  h += `<div class="about"><img src="icons/logo.svg" alt="" width="44" height="44"><div><b>VW Wallet Investments</b><div class="mut" style="font-size:12px">Versão 1.2 · feito para o Senhor Wayne</div></div></div><p class="warn">O Alfred é uma ferramenta de estudo. Não é recomendação personalizada nem substitui um profissional credenciado. Preços e dividendos vêm de fontes públicas com atraso e podem ter erros. Regras de imposto podem mudar. A decisão é sempre sua.</p>`;
+  h += `<div class="about"><img src="icons/logo.svg" alt="" width="44" height="44"><div><b>VW Wallet Investments</b><div class="mut" style="font-size:12px">Versão 1.5 · material de estudo, gratuito</div></div></div><p class="warn">O Alfred é uma ferramenta de estudo. Não é recomendação personalizada nem substitui um profissional credenciado. Preços e dividendos vêm de fontes públicas com atraso e podem ter erros. Regras de imposto podem mudar. A decisão é sempre sua.</p>`;
   return h;
 }
 function bindMais() {
-  X.bindMaisExtras(render);
+  X.bindMaisExtras(render); bindShare();
   $("#ntfy")?.addEventListener("change", (e) => store.set("ntfy", e.target.value.trim()));
   $("#dic-q")?.addEventListener("input", (e) => { $("#dic-list").innerHTML = vDicionario(e.target.value); });
   $("#dic-list")?.addEventListener("click", (e) => { if (e.target.id === "dic-more") $("#dic-list").innerHTML = vDicionario("", true); });
@@ -761,6 +770,66 @@ function renderSearch() {
   const recent = store.get("recent", []).map(asset).filter(Boolean);
   $("#s-res").innerHTML = (!q && sType === "todos" && recent.length ? `<h2 style="margin-top:6px"><span>Buscados recentemente</span></h2><div class="card">${recent.slice(0, 4).map((a) => row(a)).join("")}</div><h2><span>Todos</span></h2>` : "") + `<div class="card">${list.slice(0, 40).map((a) => row(a)).join("") || '<div class="empty">Nenhum ativo encontrado. O Alfred vigia ações, FIIs e ETFs de qualidade da B3.</div>'}</div>`;
   hydrate($("#s-res"));
+}
+
+// ------------------------------------------------------------------ INSTALAR, BOAS-VINDAS E COMPARTILHAR (v1.5)
+let deferredInstall = null;
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+const APP_URL = () => location.origin + location.pathname.replace(/index\.html$/, "");
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredInstall = e; const b = $("#inst-box"); if (b) { b.innerHTML = installHTML(); bindInstall(); } });
+window.addEventListener("appinstalled", () => { deferredInstall = null; toast("App instalado."); });
+function installHTML() {
+  if (isStandalone()) return "";
+  if (deferredInstall) return `<button class="btn" id="inst-go" style="margin-top:0">${ic("plus", "sm")} Instalar o app neste celular</button>`;
+  if (isIOS()) return `<div class="mut" style="font-size:13.5px;line-height:1.5"><b>No iPhone:</b> abra este endereço no <b>Safari</b>, toque no botão <b>Compartilhar</b> (o quadrado com uma seta para cima) e depois em <b>Adicionar à Tela de Início</b>.</div>`;
+  return `<div class="mut" style="font-size:13.5px;line-height:1.5"><b>No Android:</b> no Chrome, toque nos <b>três pontinhos</b> e em <b>Instalar app</b>.</div>`;
+}
+function bindInstall() { $("#inst-go")?.addEventListener("click", async () => { if (!deferredInstall) return; deferredInstall.prompt(); try { await deferredInstall.userChoice; } catch {} deferredInstall = null; const b = $("#inst-box"); if (b) b.innerHTML = installHTML(); }); }
+const hasData = () => store.get("posicoes", []).length || Object.keys(store.get("quiz", {})).length || store.get("metas", null);
+function welcomeCard() {
+  if (store.get("welcomed", false) || hasData()) return "";
+  return `<div class="card welcome"><h3>Bem-vindo ao VW Wallet</h3><div style="font-size:14.5px;line-height:1.5">Acompanha o mercado todos os dias e mostra a hora de comprar e de vender, de acordo com o seu perfil de investidor. <b>Gratuito e sem cadastro: seus dados ficam só neste celular.</b></div>
+  <div style="margin-top:8px"><div class="stepn"><b class="n">1</b><span>Responda 9 perguntas rápidas: o app monta a sua carteira ideal.</span></div><div class="stepn"><b class="n">2</b><span>Veja o que comprar hoje e quanto aplicar.</span></div><div class="stepn"><b class="n">3</b><span>Cadastre o que você já tem e receba os sinais de venda.</span></div></div>
+  <label>Quanto você pretende investir por mês? (R$, opcional)</label><input id="w-ap" inputmode="decimal" placeholder="ex.: 500">
+  <div id="inst-box" style="margin-top:12px">${installHTML()}</div>
+  <button class="btn" id="w-go" style="margin-top:12px">${ic("user", "sm")} Começar pelo perfil</button><button class="btn ghost" id="w-skip">Agora não</button>
+  <div class="mut" style="font-size:12px;margin-top:10px;line-height:1.5">É material de estudo, não uma recomendação personalizada. A decisão de comprar e vender é sua.</div></div>`;
+}
+function bindWelcome() {
+  bindInstall();
+  $("#w-skip")?.addEventListener("click", () => { store.set("welcomed", true); render(); });
+  $("#w-go")?.addEventListener("click", () => { const v = num($("#w-ap")?.value); if (v > 0) store.set("aporte", v); store.set("welcomed", true); location.hash = "#/perfil"; });
+}
+function shareCard() {
+  return secTitle(`${ic("share", "sm")} Instalar e compartilhar`) + `<div class="card"><div id="inst-box">${installHTML() || '<div class="mut" style="font-size:13.5px">O app já está instalado neste celular.</div>'}</div>
+  <div style="font-weight:800;margin-top:14px">Mostrar o app a alguém da família</div>
+  <div class="mut" style="font-size:13px;line-height:1.5;margin-top:4px">Cada pessoa tem o próprio perfil, e os dados ficam só no celular dela. Os seus dados nunca são enviados. Use com família e amigos, sem cobrar.</div>
+  <button class="btn" id="sh-app">${ic("share", "sm")} Enviar o link (WhatsApp…)</button>
+  <img class="qr" src="icons/qr.png" alt="QR code do app" width="168" height="168"><div class="mut" style="font-size:12px;text-align:center">Ou a pessoa aponta a câmera do celular para este código.</div>
+  <label>Tamanho das letras</label><div class="seg" id="zoom-seg">${[["1", "Normal"], ["1.15", "Grande"], ["1.3", "Muito grande"]].map(([v, t]) => `<button data-zoom="${v}" class="${String(store.get("zoom", 1)) === v ? "on" : ""}">${t}</button>`).join("")}</div></div>`;
+}
+function ntfLinks() {
+  const box = $("#ntf-links"); if (!box) return; const t = store.get("ntfy", "");
+  box.innerHTML = t ? `<a class="btn" href="ntfy://ntfy.sh/${encodeURIComponent(t)}">Assinar os avisos de ofertas no ntfy</a><a class="btn ghost" href="ntfy://ntfy.sh/${encodeURIComponent(t)}-mercado">Assinar os avisos de mercado no ntfy</a><div class="mut" style="font-size:12px;margin-top:6px">Se o botão não abrir o ntfy, assine à mão: toque em + no ntfy e digite o tópico.</div>` : "";
+}
+function bindShare() {
+  bindInstall(); ntfLinks();
+  $("#ntfy")?.addEventListener("change", ntfLinks);
+  $("#sh-app")?.addEventListener("click", async () => {
+    const url = APP_URL(), text = "Conheça o VW Wallet: acompanha o mercado e mostra a hora de comprar e de vender, de acordo com o seu perfil. Gratuito, sem cadastro; seus dados ficam só no seu celular.";
+    try { if (navigator.share) await navigator.share({ title: "VW Wallet Investments", text, url }); else { await navigator.clipboard.writeText(text + "\n" + url); toast("Texto e link copiados."); } } catch {}
+  });
+  document.querySelectorAll("[data-zoom]").forEach((b) => b.addEventListener("click", () => { store.set("zoom", +b.dataset.zoom); applyZoom(); document.querySelectorAll("[data-zoom]").forEach((x) => x.classList.toggle("on", x === b)); }));
+}
+// letras maiores para quem enxerga pior (o zoom vale para o app inteiro)
+function applyZoom() { const z = +store.get("zoom", 1); document.documentElement.style.zoom = z > 1 ? String(z) : ""; }
+// convite por link: .../vw-wallet/?av=TOPICO configura os avisos sozinho (só se ainda não houver tópico)
+function readInvite() {
+  try {
+    const u = new URL(location.href), av = u.searchParams.get("av");
+    if (av && /^[A-Za-z0-9_-]{16,64}$/.test(av)) { if (!store.get("ntfy", "")) store.set("ntfy", av); u.searchParams.delete("av"); history.replaceState(null, "", u.pathname + u.search + u.hash); toast("Avisos configurados neste celular."); }
+  } catch {}
 }
 
 // ------------------------------------------------------------------ roteador
@@ -800,7 +869,7 @@ async function render() {
   else if (route === "ferramentas") { view.innerHTML = X.vFerramentas(); X.bindFerramentas(); }
   else if (route === "aprender") { view.innerHTML = X.vAprender(); X.bindAprender(render); }
   else if (route === "mais") { view.innerHTML = vMais(); bindMais(); }
-  else { view.innerHTML = vHoje(); hydrate(view); X.bindHoje(render); dados.bindBanner(); }
+  else { view.innerHTML = vHoje(); hydrate(view); X.bindHoje(render); dados.bindBanner(); bindWelcome(); }
   annotate(view);
   view.classList.remove("enter"); void view.offsetWidth; view.classList.add("enter");
   window.scrollTo(0, 0);
@@ -811,7 +880,7 @@ const dados = makeDados({ store, toast, ic });
 let timer = null, lastRefresh = 0;
 const startTimer = () => { clearInterval(timer); timer = setInterval(refresh, 15 * 60 * 1000); };
 function boot() {
-  X.initLock(); dados.persist();
+  migrate(); applyZoom(); readInvite(); X.initLock(); dados.persist();
   // logos que não existem somem sem precisar de código dentro do HTML (permite política de segurança estrita)
   document.addEventListener("error", (e) => { if (e.target?.tagName === "IMG" && e.target.closest?.(".logo")) e.target.remove(); }, true);
   $("#tabs").innerHTML = [["hoje", "home", "Hoje"], ["mercado", "chart", "Mercado"], ["noticias", "news", "Notícias"], ["carteira", "wallet", "Carteira"], ["mais", "grid", "Mais"]].map(([k, i, t], n) => `<button data-tab="${k}" class="${n === 0 ? "on" : ""}">${ic(i)}<span>${t}</span><span class="pip"></span></button>`).join("");

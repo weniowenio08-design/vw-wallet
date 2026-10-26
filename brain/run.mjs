@@ -403,7 +403,8 @@ async function main() {
   await fs.writeFile(path.join(OUT, "spark.json"), JSON.stringify(spark));
 
   // notificações
-  const topic = process.env.NTFY_TOPIC;
+  // NTFY_TOPIC aceita vários tópicos separados por vírgula (um por pessoa): cada pessoa pode ser removida sem afetar as outras
+  const topics = (process.env.NTFY_TOPIC || "").split(",").map((s) => s.trim()).filter(Boolean), topic = topics[0];
   const app = process.env.APP_URL || "";
   const hr = nowBRT().getUTCHours();
   const quiet = hr >= 22 || hr < 7;
@@ -429,7 +430,7 @@ async function main() {
     if (quiet && !m.urgent) continue;
     if (!topic || process.env.NO_NOTIFY === "1") { log("[sem envio]", m.title, "-", m.message); continue; }
     try {
-      await ntfy(topic + (m.sfx || ""), { title: m.title, message: m.message, priority: m.priority, tags: m.tags, click: m.click });
+      for (const t of topics) { try { await ntfy(t + (m.sfx || ""), { title: m.title, message: m.message, priority: m.priority, tags: m.tags, click: m.click }); } catch (e) { log("ntfy falhou para um tópico:", e.message); } }
       state.notified[m.key] = new Date().toISOString();
       sent++;
       log("enviado:", m.title);
