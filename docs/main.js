@@ -101,9 +101,9 @@ async function checkAlerts() {
     if (a.done) continue; const x = asset(a.sym); if (!x) continue;
     if ((a.dir === "acima" && x.p >= a.price) || (a.dir === "abaixo" && x.p <= a.price)) {
       a.done = true; ch = true;
-      const body = `${a.sym} chegou a R$ ${fN(x.p)} (alvo ${a.dir} de R$ ${fN(a.price)}).`;
+      const body = `${a.sym}: R$ ${fN(x.p)} (alvo ${a.dir} de R$ ${fN(a.price)}).`;
       toast("🔔 " + body);
-      try { if (Notification?.permission === "granted") (await navigator.serviceWorker.getRegistration())?.showNotification("Alerta de preço", { body, icon: "icons/icon-192.png", tag: "alert-" + a.sym }); } catch {}
+      try { if (Notification?.permission === "granted") (await navigator.serviceWorker.getRegistration())?.showNotification("Alerta: " + a.sym, { body, icon: "icons/icon-192.png", tag: "alert-" + a.sym }); } catch {}
     }
   }
   if (ch) store.set("alertas", al);
@@ -496,16 +496,16 @@ function sinais(pos) {
   pos.forEach((p) => {
     const a = p.sym && asset(p.sym); if (!a) return;
     const gain = p.bp ? a.p / p.bp - 1 : null, lim = a.type === "fii" ? tpF : tp, w = total ? p.value / total : 0;
-    if (gain != null && gain * 100 >= lim) out.push({ k: "vender", sym: a.sym, t: `Boa hora de realizar parte: lucro de ${pct(gain)} (para o seu perfil, a partir de +${lim}%).${a.label === "esticada" ? " O preço também está esticado." : ""}` });
-    else if (a.label === "esticada" && (gain == null || gain > 0)) out.push({ k: "vender", sym: a.sym, t: `Preço esticado${gain != null ? ` e lucro de ${pct(gain)}` : ""}: considere realizar uma parte.` });
-    if (a.type === "fii" && a.pvp > 1.15) out.push({ k: "vender", sym: a.sym, t: `Cota ${fN((a.pvp - 1) * 100, 0)}% acima do valor patrimonial (P/VP ${fN(a.pvp)}): ágio alto, considere realizar parte.` });
+    if (gain != null && gain * 100 >= lim) out.push({ k: "vender", sym: a.sym, s: `Lucro ${pct(gain)}. Realize uma parte.`, t: `Boa hora de realizar parte: lucro de ${pct(gain)} (para o seu perfil, a partir de +${lim}%).${a.label === "esticada" ? " O preço também está esticado." : ""}` });
+    else if (a.label === "esticada" && (gain == null || gain > 0)) out.push({ k: "vender", sym: a.sym, s: "Preço esticado. Realize uma parte.", t: `Preço esticado${gain != null ? ` e lucro de ${pct(gain)}` : ""}: considere realizar uma parte.` });
+    if (a.type === "fii" && a.pvp > 1.15) out.push({ k: "vender", sym: a.sym, s: `Cota cara (P/VP ${fN(a.pvp)}). Realize uma parte.`, t: `Cota ${fN((a.pvp - 1) * 100, 0)}% acima do valor patrimonial (P/VP ${fN(a.pvp)}): ágio alto, considere realizar parte.` });
     if (gain != null && gain * 100 <= -cut) out.push({ k: "atencao", sym: a.sym, t: `Queda de ${fN(-gain * 100, 1)}% sobre o que você pagou. Releia por que comprou: se a tese segue valendo, não venda por pânico.` });
     if (a.label === "evitar") out.push({ k: "atencao", sym: a.sym, t: "Está no sinal de evitar: tendência ruim e qualidade menor. Reavalie." });
     if (w > 0.25) out.push({ k: "atencao", sym: a.sym, t: `${fN(w * 100, 0)}% do patrimônio num só ativo: concentração alta, não aporte mais aqui.` });
   });
   CLS.forEach(([k, n]) => { const cur = total ? (by[k] / total) * 100 : 0, tg = (T[k] / tsum) * 100; if (total > 0 && cur > tg + 5) out.push({ k: "atencao", sym: "", t: `${n}: ${fN(cur - tg, 0)} pontos acima da meta. Direcione o próximo aporte para outras classes.` }); });
   if (total > 0 && regime !== "estresse") {
-    const done = new Set(); D.assets.filter((a) => a.core && a.label === "oferta").forEach((a) => { const k = a.type === "fii" ? "fii" : a.type === "acao" ? "acao" : "ext", cur = (by[k] / total) * 100, tg = (T[k] / tsum) * 100; if (cur < tg && done.size < 3) { done.add(a.sym); out.push({ k: "comprar", sym: a.sym, t: `Oferta: ${a.why.slice(0, 2).join("; ")}. A classe está abaixo da meta (${fN(cur, 0)}% de ${fN(tg, 0)}%).` }); } });
+    const done = new Set(); D.assets.filter((a) => a.core && a.label === "oferta").forEach((a) => { const k = a.type === "fii" ? "fii" : a.type === "acao" ? "acao" : "ext", cur = (by[k] / total) * 100, tg = (T[k] / tsum) * 100; if (cur < tg && done.size < 3) { done.add(a.sym); out.push({ k: "comprar", sym: a.sym, s: `R$ ${fN(a.p)} · ${fN(Math.abs(a.dd) * 100, 0)}% abaixo da máxima.`, t: `Oferta: ${a.why.slice(0, 2).join("; ")}. A classe está abaixo da meta (${fN(cur, 0)}% de ${fN(tg, 0)}%).` }); } });
   } else if (total > 0) { const n = D.summary.waiting.length; if (n) out.push({ k: "espera", sym: "", t: `${n} ativos de qualidade estão em espera: o mercado está em estresse. O Alfred avisa quando acalmar.` }); }
   return out;
 }
@@ -523,7 +523,7 @@ async function notifySinais() {
   const seen = store.get("sinaisVistos", {}), day = todayBRT(), fresh = sinais(pos).filter((x) => ["vender", "comprar"].includes(x.k) && x.sym && seen[x.k + x.sym] !== day);
   if (!fresh.length) return; fresh.forEach((x) => (seen[x.k + x.sym] = day)); store.set("sinaisVistos", seen);
   const reg = await navigator.serviceWorker?.getRegistration();
-  fresh.slice(0, 2).forEach((x) => reg?.showNotification(x.k === "vender" ? `Hora de vender parte: ${x.sym}` : `Oferta para você: ${x.sym}`, { body: x.t, icon: "icons/icon-192.png", tag: "sinal-" + x.k + x.sym }));
+  fresh.slice(0, 2).forEach((x) => reg?.showNotification(x.k === "vender" ? `Vender parte: ${x.sym}` : `Oferta: ${x.sym}`, { body: x.s || x.t, icon: "icons/icon-192.png", tag: "sinal-" + x.k + x.sym }));
 }
 
 // ------------------------------------------------------------------ RECOMENDAÇÃO DO DIA (carteira automática pelo perfil)
@@ -749,7 +749,7 @@ async function notifyNew() {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   const seen = store.get("vistas", []), now = D.summary.offers.map((o) => o.sym), fresh = now.filter((x) => !seen.includes(x)); store.set("vistas", now);
   const reg = await navigator.serviceWorker?.getRegistration();
-  fresh.slice(0, 2).forEach((sym) => { const a = asset(sym); reg?.showNotification(`Oferta: ${sym}`, { body: `R$ ${fN(a.p)} · nota ${a.score}/100. ${a.why.slice(0, 2).join("; ")}`, icon: "icons/icon-192.png", tag: "oferta-" + sym }); });
+  fresh.slice(0, 2).forEach((sym) => { const a = asset(sym); reg?.showNotification(`Oferta: ${sym}`, { body: `R$ ${fN(a.p)} · ${fN(Math.abs(a.dd) * 100, 0)}% abaixo da máxima · nota ${a.score}/100`, icon: "icons/icon-192.png", tag: "oferta-" + sym }); });
 }
 async function refresh(manual) {
   try {

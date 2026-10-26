@@ -396,17 +396,18 @@ async function main() {
   const today = nowBRT().toISOString().slice(0, 10);
   const todo = [];
   if (state.regime && state.regime !== regime.level && (regime.level === "estresse" || state.regime === "estresse")) {
-    todo.push({ sfx: "-mercado", key: `regime-${regime.level}-${today}`, title: regime.level === "estresse" ? "Mercado em estresse" : "Mercado acalmou", message: regime.why + (regime.level === "estresse" ? ". Ofertas ficam em espera até estabilizar." : "."), priority: regime.level === "estresse" ? 4 : 3, tags: ["warning"], urgent: true });
+    const ib = typeof ctx !== "undefined" ? ctx?.ibov?.d1 : null, ibTxt = ib != null ? `Ibovespa ${ib >= 0 ? "+" : ""}${(ib * 100).toFixed(1).replace(".", ",")}%. ` : "";
+    todo.push({ sfx: "-mercado", key: `regime-${regime.level}-${today}`, title: regime.level === "estresse" ? "Mercado em estresse" : "Mercado acalmou", message: regime.level === "estresse" ? `${ibTxt}Ofertas em espera.` : "Ofertas voltam a valer.", priority: regime.level === "estresse" ? 4 : 3, tags: ["warning"], urgent: true });
   }
   for (const o of summary.offers) {
     const last = state.notified[`oferta-${o.sym}`];
     if (last && Date.now() - new Date(last) < 7 * 86400e3) continue;
-    todo.push({ key: `oferta-${o.sym}`, title: `Oferta: ${o.sym} (${o.name})`, message: `R$ ${o.p.toFixed(2)} · nota ${o.score}/100. ${o.why.slice(0, 3).join("; ")}.`, priority: 4, tags: ["chart_with_downwards_trend", "moneybag"], click: app ? `${app}#/ativo/${o.sym}` : undefined });
+    todo.push({ key: `oferta-${o.sym}`, title: `Oferta: ${o.sym}`, message: `R$ ${o.p.toFixed(2).replace(".", ",")} · ${Math.abs(o.dd * 100).toFixed(0)}% abaixo da máxima · nota ${o.score}/100`, priority: 4, tags: ["chart_with_downwards_trend", "moneybag"], click: app ? `${app}#/ativo/${o.sym}` : undefined });
   }
   for (const n of nw.items.filter((x) => x.key && /circuit breaker|copom|ministro da fazenda|rebaixa|rebaixamento/i.test(x.title)).slice(0, 2)) {
     const k = "news-" + n.title.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 40);
     if (Date.now() - new Date(n.date) > 6 * 3600e3 || state.notified[k]) continue;
-    todo.push({ sfx: "-mercado", key: k, title: "Notícia importante", message: `${n.title} (${n.source})`, priority: 3, tags: ["newspaper"], click: n.link });
+    todo.push({ sfx: "-mercado", key: k, title: "Notícia importante", message: `${n.title.length > 90 ? n.title.slice(0, 87) + "…" : n.title} (${n.source})`, priority: 3, tags: ["newspaper"], click: n.link });
   }
   let sent = 0;
   for (const m of todo) {
