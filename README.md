@@ -21,6 +21,8 @@ App para o celular (Oppo Find X9 Pro) que **vigia o mercado 24 horas, mesmo com 
 Hoje (panorama, ofertas, agenda, Focus do Banco Central, taxas do Tesouro, lembrete do aporte) · Mercado (altas, quedas, filtros e ordem) · Notícias (Brasil, mundo, meus ativos) · Carteira (patrimônio, metas, aporte sugerido, plataformas com busca entre ~60 bancos, corretoras, fintechs, plataformas do exterior e de cripto, e aceita qualquer outro nome) · Perfil de investidor (9 perguntas) · Gráficos de 24 h, 2 dias, 1 semana, 1 mês, 1 ano e 5 anos · Favoritos e alertas de preço · Busca global · Dicionário (toque no "?" ao lado das siglas).
 
 
+**Novidades da v1.2 (26/10, à noite):** logo nova (preto e amarelo, inspirada em Revolut e XP); metas geradas automaticamente pelo perfil; tela "O que comprar hoje" (compra do mês com os ativos de melhor nota); sinais de hora de vender e de comprar pela carteira do usuário (preço pago, lucro, esticado, P/VP, concentração); backup em arquivo (com senha opcional) e restauração; política de segurança estrita (CSP); menos bateria (sem consulta em segundo plano, consulta leve antes de baixar dados).
+
 **Novidades da v1.1 (estudo de 26/10):** saúde da carteira (nota de 0 a 1000, cinco pilares) e teste de estresse contra o seu limite de perda; P/VP oficial dos FIIs (informe da CVM); renda estimada; simuladores (patrimônio e meta, CDB x LCI x Tesouro, imposto na venda); trilha de 10 lições; PIN de bloqueio; avisos por categoria. Veja `ESTUDO - o que faltava e o que foi feito.md`.
 
 ## Avisos por categoria (ntfy)

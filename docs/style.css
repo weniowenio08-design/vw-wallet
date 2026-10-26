@@ -10,7 +10,7 @@
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 body{padding-bottom:calc(76px + env(safe-area-inset-bottom));min-height:100vh}
 .num{font-variant-numeric:tabular-nums}
-header{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);padding:calc(14px + env(safe-area-inset-top)) 20px 10px;display:flex;align-items:center;justify-content:space-between}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(14px + env(safe-area-inset-top)) 20px 10px;display:flex;align-items:center;justify-content:space-between}
 header h1{font-size:19px;margin:0;letter-spacing:-.02em;font-weight:800}
 header .sub{font-size:12px;color:var(--mut);margin-top:2px}
 .pill{font-size:12px;font-weight:700;padding:6px 11px;border-radius:99px;background:var(--chip);white-space:nowrap}
@@ -51,7 +51,7 @@ h2{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--mut)
 .news .m{font-size:12px;color:var(--mut);margin-top:4px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--mut)}
 .dot.pos{background:var(--up)}.dot.neg{background:var(--down)}
-nav{position:fixed;left:0;right:0;bottom:0;z-index:6;background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(16px);border-top:1px solid var(--line);display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))}
+nav{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--card);border-top:1px solid var(--line);display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))}
 nav button{flex:1;border:0;background:none;color:var(--mut);font:inherit;font-size:11px;font-weight:700;padding:6px 0;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
 nav button.on{color:var(--ink)}
 nav svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -150,8 +150,8 @@ button,.row,.cta{touch-action:manipulation}
 html{scroll-behavior:smooth}
 /* ---- siglas com "?" e painel de explicação ---- */
 .term{white-space:nowrap}
-.q{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-left:2px;border-radius:50%;background:color-mix(in srgb,var(--gold) 38%,var(--chip));color:var(--ink);font-size:9px;font-weight:900;line-height:1;vertical-align:super;position:relative;top:-1px;cursor:pointer;text-transform:none;letter-spacing:0;font-family:system-ui,sans-serif}
-.q::after{content:"";position:absolute;inset:-9px}
+.q{display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;margin-left:2px;border-radius:50%;background:color-mix(in srgb,var(--gold) 45%,var(--chip));color:var(--ink);font-size:7px;font-weight:900;line-height:1;vertical-align:super;position:relative;top:-1px;cursor:pointer;text-transform:none;letter-spacing:0;font-family:system-ui,sans-serif;opacity:.85}
+.q::after{content:"";position:absolute;inset:-11px}
 #sheet{position:fixed;inset:0;z-index:50;pointer-events:none}
 #sheet .bk{position:absolute;inset:0;background:rgba(0,0,0,.42);opacity:0;transition:opacity .2s}
 #sheet .pn{position:absolute;left:0;right:0;bottom:0;max-width:640px;margin:0 auto;background:var(--card);border-radius:24px 24px 0 0;padding:10px 22px calc(22px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .25s cubic-bezier(.2,.8,.2,1)}

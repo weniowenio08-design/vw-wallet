@@ -1,8 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VW Wallet Investments">
-  <rect width="512" height="512" rx="112" fill="#0F1115"/>
-  <g fill="none" stroke="#F5C400" stroke-width="42" stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="64,168 114,372 164,168"/>
-    <polyline points="226,168 276,372 326,252 376,372 450,108"/>
-  </g>
-  <rect x="176" y="436" width="160" height="16" rx="8" fill="#F5C400" opacity=".55"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VW Wallet Investments"><rect width="512" height="512" rx="112" fill="#0F1115"/><g transform="translate(256 256) scale(.9) translate(-254 -266)"><defs><clipPath id="c"><rect x="0" y="150" width="512" height="232"/></clipPath></defs><g clip-path="url(#c)" fill="none" stroke="#F5C400" stroke-width="46" stroke-miterlimit="30" stroke-linejoin="miter" stroke-linecap="butt"><polyline points="66,90 130,420 194,90"/><polyline points="262,90 307,420 352,245 397,420 442,90"/></g><path d="M20 318 L492 262" stroke="#0F1115" stroke-width="13" fill="none"/></g></svg>

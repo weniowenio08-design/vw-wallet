@@ -1,6 +1,7 @@
 // VW Wallet Investments: app minimalista. Dados vêm de data/*.json (gerados pelo cérebro na nuvem).
 // Tudo que o usuário digita (patrimônio, metas, favoritos, alertas) fica SÓ neste aparelho (localStorage).
 import { makeExtras } from "./extras.js";
+import { makeDados } from "./dados.js";
 const $ = (s, el = document) => el.querySelector(s);
 const store = {
   get(k, d) { try { const v = JSON.parse(localStorage.getItem("vw:" + k)); return v ?? d; } catch { return d; } },
@@ -61,20 +62,27 @@ let D = { summary: null, assets: [], news: null, backtest: null, digest: null, s
 const seriesCache = {}, intraCache = {};
 
 async function j(p) { const r = await fetch(p + "?t=" + Math.floor(Date.now() / 60000)); if (!r.ok) throw new Error(p); return r.json(); }
-async function load() {
-  const [summary, assets, news, spark] = await Promise.all([j("data/summary.json"), j("data/assets.json"), j("data/news.json"), j("data/spark.json").catch(() => ({}))]);
+async function load(force) {
+  // consulta leve primeiro: se o resumo não mudou desde a última vez, não baixa mais nada (economiza bateria e dados)
+  const summary = await j("data/summary.json");
+  if (!force && D.loaded && D.summary.updated === summary.updated) return false;
+  const [assets, news, spark] = await Promise.all([j("data/assets.json"), j("data/news.json"), j("data/spark.json").catch(() => ({}))]);
   const changed = !D.summary || D.summary.updated !== summary.updated;
   D.summary = summary; D.assets = assets; D.news = news; D.spark = spark;
   try { D.backtest = await j("data/backtest.json"); } catch {}
   try { D.digest = await j("data/digest.json"); } catch {}
   try { D.tesouro = await j("data/tesouro.json"); } catch {}
   store.set("snap", { summary, assets, spark, news: { ...news, items: news.items.slice(0, 40), byAsset: {} } });
+  D.loaded = true;
   return changed;
 }
 function restoreSnap() { const s = store.get("snap", null); if (s?.summary) { D.summary = s.summary; D.assets = s.assets; D.news = s.news; D.spark = s.spark || {}; return true; } return false; }
 const series = async (sym) => { if (!(sym in seriesCache)) { try { seriesCache[sym] = await j(`data/series/${sym}.json`); } catch { seriesCache[sym] = null; } } return seriesCache[sym]; };
 const intraOf = async (sym) => { if (!(sym in intraCache)) { try { intraCache[sym] = await j(`data/series/${sym}.i.json`); } catch { intraCache[sym] = null; } } return intraCache[sym]; };
 const asset = (sym) => D.assets.find((a) => a.sym === sym);
+// posição = { id, cls, sym, plat, value (valor investido), bp (preço pago por cota), q (quantidade) }. Com q e bp o valor atual acompanha o preço do ativo.
+const curVal = (p) => { const a = p.sym && p.q ? asset(p.sym) : null; return a ? p.q * a.p : p.value; };
+const posLive = () => store.get("posicoes", []).map((p) => ({ ...p, inv: p.value, value: curVal(p) }));
 
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("on"), 2600); }
 
@@ -233,7 +241,7 @@ function spark(c, up) {
   return `<polyline points="${pts}" fill="none" stroke="${up ? "var(--up)" : "var(--down)"}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
 }
 const BADGE = { oferta: '<span class="badge">OFERTA</span>', aguardar: '<span class="badge w">EM ESPERA</span>', esticada: '<span class="badge s">ESTICADA</span>', evitar: '<span class="badge s">EVITAR</span>', observar: '<span class="badge w">OBSERVAR</span>' };
-const logo = (sym, big) => `<span class="logo${big ? " big" : ""}"><b>${esc(sym.slice(0, 2))}</b><img src="logos/${esc(sym)}.svg" alt="" loading="lazy" onerror="this.remove()"></span>`;
+const logo = (sym, big) => `<span class="logo${big ? " big" : ""}"><b>${esc(sym.slice(0, 2))}</b><img src="logos/${esc(sym)}.svg" alt="" loading="lazy"></span>`;
 function row(a, why = false) {
   const f = favs().has(a.sym) ? `<span class="fav">${icFill("star")}</span>` : "";
   return `<div class="row" data-go="#/ativo/${a.sym}">${logo(a.sym)}<div class="grow"><div class="tk">${a.sym}${f}${BADGE[a.label] || ""}</div><div class="nm">${esc(a.name)}</div>${why && a.why?.length ? `<div class="chips">${a.why.slice(0, 3).map((w) => `<span class="chip">${esc(w)}</span>`).join("")}</div>` : ""}</div><svg class="spark" viewBox="0 0 64 28" data-spark="${a.sym}" data-up="${a.d1 >= 0 ? 1 : 0}"></svg><div class="px num"><b>${fN(a.p)}</b><i class="${cl(a.d1)}">${pct(a.d1)}</i></div></div>`;
@@ -250,7 +258,7 @@ const secTitle = (t, right = "") => `<h2><span>${t}</span>${right}</h2>`;
 // ------------------------------------------------------------------ HOJE
 function vHoje() {
   const s = D.summary, R = REGIME[s.regime.level], c = s.context, m = s.macro, fav = favs();
-  let h = X.aporteBanner() + `<div class="banner ${s.regime.level}"><b>${R.t}</b><span>${esc(s.regime.why)}. ${R.d}</span></div>`;
+  let h = dados.backupBanner() + X.aporteBanner() + sinaisCard(posLive(), true) + `<div class="banner ${s.regime.level}"><b>${R.t}</b><span>${esc(s.regime.why)}. ${R.d}</span></div>`;
   h += secTitle("Panorama") + `<div class="strip">${kpi("Selic", m.selic != null ? fN(m.selic) + "%" : "—")}${kpi("CDI", m.cdi != null ? fN(m.cdi) + "%" : "—")}${kpi("IPCA 12m", m.ipca12 != null ? fN(m.ipca12) + "%" : "—")}${kpi("Dólar", c.usd ? "R$ " + fN(c.usd.p) : "—", c.usd?.d1)}${kpi("Ibovespa", c.ibov ? fN(c.ibov.p, 0) : "—", c.ibov?.d1)}${kpi("S&P 500", c.sp500 ? fN(c.sp500.p, 0) : "—", c.sp500?.d1)}</div>`;
   h += X.focusCard() + X.tesouroCard();
   if (D.digest?.text) h += secTitle("Resumo do dia") + `<div class="card" style="line-height:1.5;font-size:14.5px">${esc(D.digest.text).replace(/\n/g, "<br>")}</div>`;
@@ -290,7 +298,7 @@ function newsList(items) {
 }
 let nwTab = "todas";
 function vNoticias() {
-  const mine = new Set([...store.get("posicoes", []).map((p) => p.sym).filter(Boolean), ...favs(), ...D.summary.offers.map((o) => o.sym), ...D.summary.waiting.map((o) => o.sym)]);
+  const mine = new Set([...posLive().map((p) => p.sym).filter(Boolean), ...favs(), ...D.summary.offers.map((o) => o.sym), ...D.summary.waiting.map((o) => o.sym)]);
   const f = { todas: () => true, br: (n) => n.cat !== "mundo", mundo: (n) => n.cat === "mundo", minhas: (n) => (n.syms || []).some((s) => mine.has(s)), importantes: (n) => n.key };
   const items = D.news.items.filter(f[nwTab]), m = D.news.mood, mood = m > 0.15 ? "positivo" : m < -0.15 ? "negativo" : "neutro";
   return secTitle(`Notícias · clima ${mood}`) + `<div class="fchips">${[["todas", "Todas"], ["br", "Brasil"], ["importantes", "Importantes"], ["minhas", "Meus ativos"], ["mundo", "Mundo"]].map(([k, t]) => `<button data-nw="${k}" class="${nwTab === k ? "on" : ""}">${t}</button>`).join("")}</div>
@@ -306,7 +314,7 @@ async function vAtivo(sym) {
   if (!a) return `<button class="back" data-go="#/hoje">${ic("back", "sm")} Voltar</button><div class="empty">Ativo não encontrado.</div>`;
   const R = REGIME[D.summary.regime.level], isFav = favs().has(sym), al = alerts().filter((x) => x.sym === sym);
   const lbl = { oferta: "Oferta: preço atraente para o seu perfil.", aguardar: "Boa, mas em espera: o mercado está agitado. Espere estabilizar.", observar: "Em observação: ainda não é uma oferta.", esticada: "Preço esticado: se você tem, considere realizar parte.", evitar: "Evitar por enquanto: tendência ruim e qualidade menor.", neutro: "Neutro: nada de especial agora." }[a.label];
-  const held = store.get("posicoes", []).filter((p) => p.sym === a.sym);
+  const held = posLive().filter((p) => p.sym === a.sym);
   return `<button class="back" data-go="#/hoje">${ic("back", "sm")} Voltar</button>
   <div class="card"><div class="cv"><div style="display:flex;align-items:center;gap:12px">${logo(a.sym, true)}<div><div class="tk" style="font-size:24px;font-weight:800">${a.sym}${BADGE[a.label] || ""}</div><div class="mut" style="font-size:13px">${esc(a.name)} · ${esc(a.sector)}</div></div></div>
   <div class="acts"><button class="icbtn ${isFav ? "on" : ""}" id="fav-btn" aria-label="Favoritar">${isFav ? icFill("star") : ic("star")}</button><button class="icbtn ${al.some((x) => !x.done) ? "on" : ""}" id="al-btn" aria-label="Alerta de preço">${ic("bell")}</button></div></div>
@@ -409,8 +417,8 @@ function pieCard(pos, T, total) {
 
 let platFilter = "todas";
 function totals(pos) { const by = Object.fromEntries(CLS.map(([k]) => [k, 0])); pos.forEach((p) => (by[p.cls] += p.value)); return { by, total: pos.reduce((s, p) => s + p.value, 0) }; }
-function suggest(pos, aporte, T, ipcaRate) {
-  const { by, total } = totals(pos), tot = total + aporte, regime = D.summary.regime.level, tsum = Object.values(T).reduce((a, b) => a + b, 0) || 1;
+function suggest(pos, aporte, T, ipcaRate, regimeOv) {
+  const { by, total } = totals(pos), tot = total + aporte, regime = regimeOv || D.summary.regime.level, tsum = Object.values(T).reduce((a, b) => a + b, 0) || 1;
   const gap = {}; let gs = 0;
   CLS.forEach(([k]) => { gap[k] = Math.max(0, (tot * (T[k] || 0)) / tsum - by[k]); gs += gap[k]; });
   const out = {}; CLS.forEach(([k]) => (out[k] = gs > 0 ? (aporte * gap[k]) / gs : (aporte * (T[k] || 0)) / tsum));
@@ -429,17 +437,19 @@ const whereBuy = (k) => {
   return parts.join(" · ") || "Nenhuma das suas plataformas oferece isso: veja Mais › Minhas plataformas.";
 };
 function vCarteira() {
-  const all = store.get("posicoes", []), T = { ...DEF_T, ...store.get("metas", {}) }, ap = store.get("aporte", 1000), ipcaRate = store.get("ipca", null) ?? D.summary.macro.tesouro?.ipca2032 ?? null;
+  const all = posLive(), T = { ...DEF_T, ...store.get("metas", {}) }, ap = store.get("aporte", 1000), ipcaRate = store.get("ipca", null) ?? D.summary.macro.tesouro?.ipca2032 ?? null;
   const usedPlats = [...new Set(all.map((p) => p.plat).filter(Boolean))];
   const pos = platFilter === "todas" ? all : all.filter((p) => p.plat === platFilter);
   const { by, total } = totals(pos), tsum = Object.values(T).reduce((a, b) => a + b, 0) || 1;
   let h = secTitle("Meu patrimônio") + `<div class="card"><div class="big num">${fBRL(total)}</div><div class="mut" style="font-size:13px">${pos.length} posições${platFilter !== "todas" ? ` em ${esc(platFilter)}` : ""} · guardado só neste aparelho</div></div>`;
   if (usedPlats.length) h += `<div class="fchips"><button data-pf="todas" class="${platFilter === "todas" ? "on" : ""}">Todas as plataformas</button>${usedPlats.map((p) => `<button data-pf="${esc(p)}" class="${platFilter === p ? "on" : ""}">${esc(p)}</button>`).join("")}</div>`;
+  h += sinaisCard(all);
   h += pieCard(pos, T, total);
   h += X.healthCard(pos) + X.incomeCard(pos);
   const qa = store.get("quiz", {}), qd = QUIZ.every((q) => qa[q.k]), pr = qd ? profileOf(qa) : null;
   h += `<div class="card cta" data-go="#/perfil"><div class="cta-i">${ic("user")}</div><div style="flex:1"><div style="font-weight:800;font-size:15px">${pr ? `Perfil: ${pr.name}` : "Descubra o seu perfil de investidor"}</div><div class="mut" style="font-size:13px;margin-top:3px">${pr ? "Toque para ver a carteira sugerida ou refazer." : "9 perguntas rápidas e o Alfred monta a carteira ideal para você (ou para um amigo)."}</div></div><span class="badge">${pr ? "VER" : "COMEÇAR"}</span></div>`;
-  h += secTitle("Como está distribuído") + `<div class="card">${CLS.map(([k, n]) => { const cur = total ? (by[k] / total) * 100 : 0, tg = (T[k] / tsum) * 100; return `<div class="alloc"><div class="l"><span>${n}</span><span class="num"><b>${fN(cur, 0)}%</b> <span class="mut">/ meta ${fN(tg, 0)}%</span></span></div><div class="bar"><i style="width:${Math.min(100, cur)}%"></i><b style="left:${Math.min(99, tg)}%"></b></div></div>`; }).join("")}</div>`;
+  h += `<div class="card cta" data-go="#/recomendar"><div class="cta-i">${ic("target")}</div><div style="flex:1"><div style="font-weight:800;font-size:15px">O que comprar hoje?</div><div class="mut" style="font-size:13px;margin-top:3px">O Alfred monta a compra do mês de acordo com o seu perfil.</div></div><span class="badge">VER</span></div>`;
+  h += secTitle("Como está distribuído", `<button class="btn sm ghost" id="meta-auto2" style="text-transform:none;letter-spacing:0">${ic("user", "sm")} Metas pelo perfil</button>`) + `<div class="card">${CLS.map(([k, n]) => { const cur = total ? (by[k] / total) * 100 : 0, tg = (T[k] / tsum) * 100; return `<div class="alloc"><div class="l"><span>${n}</span><span class="num"><b>${fN(cur, 0)}%</b> <span class="mut">/ meta ${fN(tg, 0)}%</span></span></div><div class="bar"><i style="width:${Math.min(100, cur)}%"></i><b style="left:${Math.min(99, tg)}%"></b></div></div>`; }).join("")}</div>`;
   if (all.length && usedPlats.length) { const bp = usedPlats.map((p) => [p, all.filter((x) => x.plat === p).reduce((s, x) => s + x.value, 0)]), tt = totals(all).total || 1; h += secTitle("Por plataforma") + `<div class="card">${bp.map(([p, v]) => `<div class="alloc"><div class="l"><span>${esc(p)}</span><span class="num"><b>${fBRL(v)}</b> <span class="mut">${fN((v / tt) * 100, 0)}%</span></span></div><div class="bar"><i style="width:${(v / tt) * 100}%"></i></div></div>`).join("")}</div>`; }
   const al = []; pos.forEach((p) => { const a = p.sym && asset(p.sym); if (!a) return; if (a.label === "esticada") al.push(`${a.sym}: preço esticado, considere realizar parte.`); if (a.label === "evitar") al.push(`${a.sym}: sinal de evitar, reavalie.`); if (total && p.value / total > 0.25) al.push(`${a.sym}: mais de 25% do patrimônio, concentração alta.`); });
   if (al.length) h += secTitle("Atenção") + `<div class="card">${al.map((x) => `<div style="padding:6px 0">• ${esc(x)}</div>`).join("")}</div>`;
@@ -448,12 +458,13 @@ function vCarteira() {
   h += secTitle("Para onde vai o próximo aporte") + `<div class="card">${total && diffs.length ? `<div class="mut" style="font-size:13.5px;line-height:1.5;margin-bottom:6px">${diffs.sort((a, b) => a[1] - b[1]).map(([n, d]) => `${n}: ${d < 0 ? `${fN(-d, 0)} pontos abaixo da meta` : `${fN(d, 0)} pontos acima`}`).join(" · ")}.</div>` : ""}<label>Quanto você vai investir (R$)</label><input id="ap" inputmode="decimal" value="${ap}"><label>Taxa do Tesouro IPCA+ que você vê hoje (% acima da inflação)</label><input id="ipca" inputmode="decimal" placeholder="ex.: 7,3" value="${ipcaRate ?? ""}">
   <table style="margin-top:12px"><tr><th>Classe</th><th class="r">Aportar</th></tr>${CLS.filter(([k]) => S.out[k] > 0.5 || T[k] > 0).map(([k, n]) => `<tr><td>${n}${S.notes[k] ? `<div class="mut" style="font-size:12px">${esc(S.notes[k])}</div>` : ""}${S.out[k] > 0.5 ? `<div class="mut" style="font-size:12px">${esc(whereBuy(k))}</div>` : ""}${S.sel[k]?.length && S.out[k] > 0.5 ? `<div class="chips">${S.sel[k].map((x) => `<span class="chip" data-go="#/ativo/${x}" style="cursor:pointer">${x}</span>`).join("")}</div>` : ""}</td><td class="r num"><b>${fBRL(S.out[k])}</b></td></tr>`).join("")}</table>
   <div class="mut" style="font-size:12px;margin-top:10px;line-height:1.5">Os códigos sugeridos vêm dos ativos de qualidade com melhor nota hoje. Quem compra é você, pelo seu banco ou corretora.</div></div>`;
-  h += secTitle("Minhas posições") + `<div class="card">${pos.length ? pos.map((p) => `<div class="row" style="cursor:default">${p.sym ? logo(p.sym) : `<span class="logo ic-only">${ic("wallet", "sm")}</span>`}<div class="grow"><div class="tk" style="font-size:15px">${esc(p.sym || CLS.find((c) => c[0] === p.cls)[1])}</div><div class="nm">${CLS.find((c) => c[0] === p.cls)[1]}${p.plat ? " · " + esc(p.plat) : ""}</div></div><div class="px num"><b>${fBRL(p.value)}</b></div><button class="btn sm ghost" data-del="${p.id}" aria-label="Excluir">${ic("trash", "sm")}</button></div>`).join("") : '<div class="empty">Nada cadastrado ainda. Adicione abaixo o que você já tem investido.</div>'}</div>`;
+  h += secTitle("Minhas posições") + `<div class="card">${pos.length ? pos.map((p) => `<div class="row" style="cursor:default">${p.sym ? logo(p.sym) : `<span class="logo ic-only">${ic("wallet", "sm")}</span>`}<div class="grow"><div class="tk" style="font-size:15px">${esc(p.sym || CLS.find((c) => c[0] === p.cls)[1])}</div><div class="nm">${CLS.find((c) => c[0] === p.cls)[1]}${p.plat ? " · " + esc(p.plat) : ""}</div></div><div class="px num"><b>${fBRL(p.value)}</b>${p.q && p.bp ? (() => { const g = (p.value - p.inv) / p.inv; return `<i class="${cl(g)}">${pct(g)}</i>`; })() : ""}</div><button class="btn sm ghost" data-del="${p.id}" aria-label="Excluir">${ic("trash", "sm")}</button></div>`).join("") : '<div class="empty">Nada cadastrado ainda. Adicione abaixo o que você já tem investido.</div>'}</div>`;
   const pre = store.get("prefill", null); store.set("prefill", null);
   h += `<div class="card"><b>Adicionar posição</b><label>Classe</label><select id="f-cls">${CLS.map(([k, n]) => `<option value="${k}" ${pre && ((pre.type === "fii" && k === "fii") || (pre.type === "acao" && k === "acao") || (pre.type === "etf" && k === "ext")) ? "selected" : ""}>${n}</option>`).join("")}</select>
   <label>Código do ativo (opcional, para ações e FIIs)</label><input id="f-sym" list="syms" placeholder="ex.: KNCR11" value="${pre?.sym || ""}"><datalist id="syms">${D.assets.map((a) => `<option value="${a.sym}">${esc(a.name)}</option>`).join("")}</datalist>
   <label>Plataforma (digite as primeiras letras)</label><div><input id="f-plat" placeholder="ex.: XP, nu, revolut…" autocomplete="off" value="${esc(myPlats()[0] || "")}"></div>
-  <label>Valor investido hoje (R$)</label><input id="f-val" inputmode="decimal" placeholder="ex.: 300"><button class="btn" id="f-add">Salvar posição</button></div>`;
+  <label>Valor investido (R$)</label><input id="f-val" inputmode="decimal" placeholder="ex.: 300">
+  <label>Preço pago por cota ou ação (R$, só para ações, FIIs e ETFs; vazio = preço de agora)</label><input id="f-bp" inputmode="decimal" placeholder="ex.: 9,85"><div class="mut" style="font-size:12px;margin-top:6px;line-height:1.45">Com o preço pago, o app acompanha o seu lucro e avisa a boa hora de vender.</div><button class="btn" id="f-add">Salvar posição</button></div>`;
   return h;
 }
 function bindCarteira() {
@@ -464,7 +475,89 @@ function bindCarteira() {
   $("#f-add")?.addEventListener("click", () => {
     const v = num($("#f-val").value); if (!v || v <= 0) return toast("Digite um valor em R$.");
     const sym = $("#f-sym").value.trim().toUpperCase(), plat = $("#f-plat").value.trim();
-    const pos = store.get("posicoes", []); pos.push({ id: Date.now(), cls: $("#f-cls").value, sym: sym || "", plat, value: v }); store.set("posicoes", pos); toast("Posição salva."); re();
+    const a = sym ? asset(sym) : null, bp = a ? num($("#f-bp").value) || a.p : null;
+    const pos = store.get("posicoes", []); pos.push({ id: Date.now(), cls: $("#f-cls").value, sym: sym || "", plat, value: v, ...(a ? { bp, q: v / bp } : {}) }); store.set("posicoes", pos); toast("Posição salva."); re();
+  });
+  const auto = () => { const qa = store.get("quiz", {}); if (!QUIZ.every((q) => qa[q.k])) { toast("Responda as 9 perguntas e eu gero as metas."); location.hash = "#/perfil"; return; } store.set("metas", profileOf(qa).alloc); toast("Metas geradas pelo seu perfil."); re(); };
+  $("#meta-auto2")?.addEventListener("click", auto);
+}
+
+// ------------------------------------------------------------------ SINAIS DA CARTEIRA (hora de comprar e de vender, de acordo com o perfil)
+const PROF_TP = [10, 15, 20, 30, 40]; // % de lucro a partir do qual vale realizar parte (ações e ETFs), por perfil
+const profIdx = () => { const q = store.get("quiz", {}); return QUIZ.every((x) => q[x.k]) ? profileOf(q).idx : 1; };
+function sinais(pos) {
+  const idx = profIdx(), tp = PROF_TP[idx], tpF = Math.round(tp * 0.6), cut = idx >= 3 ? 20 : 15, T = { ...DEF_T, ...store.get("metas", {}) }, tsum = Object.values(T).reduce((a, b) => a + b, 0) || 1;
+  const { by, total } = totals(pos), regime = D.summary.regime.level, out = [];
+  pos.forEach((p) => {
+    const a = p.sym && asset(p.sym); if (!a) return;
+    const gain = p.bp ? a.p / p.bp - 1 : null, lim = a.type === "fii" ? tpF : tp, w = total ? p.value / total : 0;
+    if (gain != null && gain * 100 >= lim) out.push({ k: "vender", sym: a.sym, t: `Boa hora de realizar parte: lucro de ${pct(gain)} (para o seu perfil, a partir de +${lim}%).${a.label === "esticada" ? " O preço também está esticado." : ""}` });
+    else if (a.label === "esticada" && (gain == null || gain > 0)) out.push({ k: "vender", sym: a.sym, t: `Preço esticado${gain != null ? ` e lucro de ${pct(gain)}` : ""}: considere realizar uma parte.` });
+    if (a.type === "fii" && a.pvp > 1.15) out.push({ k: "vender", sym: a.sym, t: `Cota ${fN((a.pvp - 1) * 100, 0)}% acima do valor patrimonial (P/VP ${fN(a.pvp)}): ágio alto, considere realizar parte.` });
+    if (gain != null && gain * 100 <= -cut) out.push({ k: "atencao", sym: a.sym, t: `Queda de ${fN(-gain * 100, 1)}% sobre o que você pagou. Releia por que comprou: se a tese segue valendo, não venda por pânico.` });
+    if (a.label === "evitar") out.push({ k: "atencao", sym: a.sym, t: "Está no sinal de evitar: tendência ruim e qualidade menor. Reavalie." });
+    if (w > 0.25) out.push({ k: "atencao", sym: a.sym, t: `${fN(w * 100, 0)}% do patrimônio num só ativo: concentração alta, não aporte mais aqui.` });
+  });
+  CLS.forEach(([k, n]) => { const cur = total ? (by[k] / total) * 100 : 0, tg = (T[k] / tsum) * 100; if (total > 0 && cur > tg + 5) out.push({ k: "atencao", sym: "", t: `${n}: ${fN(cur - tg, 0)} pontos acima da meta. Direcione o próximo aporte para outras classes.` }); });
+  if (total > 0 && regime !== "estresse") {
+    const done = new Set(); D.assets.filter((a) => a.core && a.label === "oferta").forEach((a) => { const k = a.type === "fii" ? "fii" : a.type === "acao" ? "acao" : "ext", cur = (by[k] / total) * 100, tg = (T[k] / tsum) * 100; if (cur < tg && done.size < 3) { done.add(a.sym); out.push({ k: "comprar", sym: a.sym, t: `Oferta: ${a.why.slice(0, 2).join("; ")}. A classe está abaixo da meta (${fN(cur, 0)}% de ${fN(tg, 0)}%).` }); } });
+  } else if (total > 0) { const n = D.summary.waiting.length; if (n) out.push({ k: "espera", sym: "", t: `${n} ativos de qualidade estão em espera: o mercado está em estresse. O Alfred avisa quando acalmar.` }); }
+  return out;
+}
+function sinaisCard(pos, compact) {
+  if (!pos.length) return compact ? "" : secTitle("Sinais da sua carteira") + `<div class="card"><div class="empty">Cadastre suas posições (com o preço pago) e o Alfred avisa a boa hora de comprar e de vender, de acordo com o seu perfil.</div></div>`;
+  const s = sinais(pos), tp = PROF_TP[profIdx()];
+  if (!s.length) return compact ? "" : secTitle("Sinais da sua carteira") + `<div class="card"><div style="font-weight:700">Nenhum sinal agora.</div><div class="mut" style="font-size:13px;margin-top:4px;line-height:1.5">Sem lucro para realizar nem oferta nas classes abaixo da meta. Siga o plano e o aporte do mês.</div></div>`;
+  const G = [["vender", "Hora de vender (parte)", "down"], ["comprar", "Hora de comprar", "up"], ["atencao", "Atenção", ""], ["espera", "Em espera", ""]];
+  return secTitle(`${ic("bell", "sm")} Sinais da sua carteira`) + `<div class="card">${G.map(([k, ti, c]) => { const l = s.filter((x) => x.k === k); return l.length ? `<div style="font-weight:800;margin:6px 0 4px" class="${c}">${ti}</div>${l.map((x) => `<div style="padding:6px 0;line-height:1.45;font-size:14px" ${x.sym ? `data-go="#/ativo/${x.sym}" role="link"` : ""}>${x.sym ? `<b>${x.sym}</b> · ` : ""}${esc(x.t)}</div>`).join("")}` : ""; }).join("")}
+    <div class="mut" style="font-size:12px;margin-top:8px;line-height:1.5">Regra do seu perfil: realizar parte (um quarto a um terço) quando uma ação ou ETF ganha +${tp}% sobre o preço pago (FIIs, +${Math.round(tp * 0.6)}%), ou quando o preço está esticado. São regras objetivas, não previsões: quem decide é você.</div></div>`;
+}
+async function notifySinais() {
+  if (!("Notification" in window) || Notification.permission !== "granted" || !D.summary) return;
+  const pos = posLive(); if (!pos.length) return;
+  const seen = store.get("sinaisVistos", {}), day = todayBRT(), fresh = sinais(pos).filter((x) => ["vender", "comprar"].includes(x.k) && x.sym && seen[x.k + x.sym] !== day);
+  if (!fresh.length) return; fresh.forEach((x) => (seen[x.k + x.sym] = day)); store.set("sinaisVistos", seen);
+  const reg = await navigator.serviceWorker?.getRegistration();
+  fresh.slice(0, 2).forEach((x) => reg?.showNotification(x.k === "vender" ? `Hora de vender parte: ${x.sym}` : `Oferta para você: ${x.sym}`, { body: x.t, icon: "icons/icon-192.png", tag: "sinal-" + x.k + x.sym }));
+}
+
+// ------------------------------------------------------------------ RECOMENDAÇÃO DO DIA (carteira automática pelo perfil)
+const TIT_RF = { selic: "Tesouro Selic", ipca: "Tesouro IPCA+ (vencimento 2032 ou próximo)", cdb: "CDB, LCI ou LCA com liquidez e FGC" };
+function planoHoje() {
+  const qa = store.get("quiz", {}), pr = profileOf(qa), T = pr.alloc, ap = store.get("aporte", 1000), pos = posLive();
+  const ipcaRate = store.get("ipca", null) ?? D.summary.macro.tesouro?.ipca2032 ?? null;
+  const S = suggest(pos, ap, T, ipcaRate), I = suggest(pos, ap, T, ipcaRate, "calmo");
+  const split = (sel, amt) => { if (!sel?.length || amt < 1) return []; const ws = sel.map((s) => Math.max(1, asset(s)?.score || 1)), sw = ws.reduce((a, b) => a + b, 0); return sel.map((s, i) => { const a = asset(s), v = (amt * ws[i]) / sw; return { sym: s, a, v, q: Math.floor(v / a.p) }; }); };
+  const lines = (O) => CLS.flatMap(([k, n]) => { const v = O.out[k]; if (!(v >= 1)) return []; return RISK.includes(k) ? (O.sel[k]?.length ? split(O.sel[k], v).map((x) => ({ ...x, k })) : [{ k, n, v }]) : [{ k, n: TIT_RF[k], v, note: O.notes[k] }]; });
+  const now = lines(S);
+  const wait = CLS.flatMap(([k]) => { if (!RISK.includes(k) && k !== "ipca") return []; const w = I.out[k] - S.out[k]; if (!(w >= 1)) return []; return RISK.includes(k) ? (I.sel[k]?.length ? split(I.sel[k], w).map((x) => ({ ...x, k })) : [{ k, n: CLS.find((c) => c[0] === k)[1], v: w }]) : [{ k, n: TIT_RF[k], v: w, note: S.notes[k] }]; });
+  return { pr, ap, now, wait, S, ipcaRate };
+}
+function recLine(x, waiting) {
+  const a = x.a, name = x.sym ? `<b>${x.sym}</b> <span class="mut">${esc(a.name)}</span>` : `<b>${esc(x.n)}</b>`;
+  const extra = x.sym ? `<div class="mut" style="font-size:12px">${x.q >= 1 ? `≈ ${x.q} ${x.q === 1 ? "cota" : "cotas"} a R$ ${fN(a.p)}` : `1 cota custa R$ ${fN(a.p)}: junte com o próximo aporte`} · nota ${a.score}/100${a.why?.length ? " · " + esc(a.why.slice(0, 2).join("; ")) : ""}</div>` : (x.k && x.k !== "ext" ? `<div class="mut" style="font-size:12px">${esc(whereBuy(x.k))}${x.note ? " · " + esc(x.note) : ""}</div>` : "");
+  return `<tr><td style="${x.sym ? "cursor:pointer" : ""}" ${x.sym ? `data-go="#/ativo/${x.sym}"` : ""}>${name}${extra}</td><td class="r num"><b>${fBRL(x.v)}</b></td></tr>`;
+}
+function vRecomendar() {
+  const qa = store.get("quiz", {}), back = `<button class="back" data-go="#/carteira">${ic("back", "sm")} Carteira</button>`;
+  if (!QUIZ.every((q) => qa[q.k])) return back + secTitle("O que comprar hoje") + `<div class="card"><div style="line-height:1.5">Para recomendar de acordo com o seu perfil, preciso das suas 9 respostas rápidas.</div><button class="btn" data-go="#/perfil">${ic("user", "sm")} Responder as 9 perguntas</button></div>`;
+  const P = planoHoje(), R = REGIME[D.summary.regime.level], tot = P.now.reduce((s, x) => s + x.v, 0);
+  return back + secTitle("O que comprar hoje") + `<div class="card"><div style="font-weight:800;font-size:17px">Perfil ${esc(P.pr.name)}</div><div class="mut" style="font-size:13.5px;line-height:1.5;margin-top:4px">${esc(P.pr.desc)}</div><label>Quanto você vai investir neste mês (R$)</label><input id="rec-ap" inputmode="decimal" value="${P.ap}"></div>
+  <div class="banner ${D.summary.regime.level}"><b>${R.t}</b><span>${esc(D.summary.regime.why)}. ${R.d}</span></div>
+  ${secTitle("Comprar agora")}<div class="card">${P.now.length ? `<table><tr><th>Onde colocar</th><th class="r">Valor</th></tr>${P.now.map((x) => recLine(x)).join("")}<tr><td><b>Total</b></td><td class="r num"><b>${fBRL(tot)}</b></td></tr></table>` : '<div class="empty">Nada a comprar com este valor.</div>'}</div>
+  ${P.wait.length ? secTitle("Para comprar quando o mercado acalmar") + `<div class="card"><div class="mut" style="font-size:13px;line-height:1.5;margin-bottom:6px">Estes valores ficam no Tesouro Selic por enquanto. Quando a condição abaixo melhorar, o Alfred avisa e o dinheiro vai para:</div><table>${P.wait.map((x) => recLine(x, true)).join("")}</table></div>` : ""}
+  <button class="btn" id="rec-reg">${ic("check", "sm")} Já comprei: registrar na minha carteira</button>
+  <p class="warn">Os códigos são os ativos de qualidade com melhor nota do Alfred hoje, nas classes do seu perfil. É material de estudo gerado por regras objetivas, não recomendação personalizada de investimento. Confira preço, taxas e prazos na sua corretora e só registre aqui o que você realmente comprou.</p>`;
+}
+function bindRecomendar() {
+  $("#rec-ap")?.addEventListener("change", (e) => { const v = num(e.target.value); if (v > 0) { store.set("aporte", v); render(); } });
+  $("#rec-reg")?.addEventListener("click", () => {
+    const P = planoHoje(); if (!P.now.length) return;
+    if (!confirm(`Registrar ${P.now.length} compras (${fBRL(P.now.reduce((s, x) => s + x.v, 0))}) na sua carteira? Faça isso só depois de comprar de verdade.`)) return;
+    const mine = myPlats(), platOf = (k) => mine.find((n) => PLATS.find((p) => p.n === n)?.caps.includes(k)) || mine[0] || "";
+    const pos = store.get("posicoes", []);
+    P.now.forEach((x) => { const base = { id: Date.now() + Math.floor(Math.random() * 1e6), cls: x.k, sym: x.sym || "", plat: platOf(x.k) }; if (x.sym && x.a) { const q = Math.max(x.q, 0); if (q >= 1) pos.push({ ...base, value: q * x.a.p, bp: x.a.p, q }); } else pos.push({ ...base, value: x.v }); });
+    store.set("posicoes", pos); toast("Compras registradas."); location.hash = "#/carteira";
   });
 }
 
@@ -518,7 +611,9 @@ function vPerfil() {
     ${secTitle("Carteira sugerida para você")}<div class="card">${CLS.map(([k, n]) => `<div class="alloc"><div class="l"><span>${n}</span><b class="num">${r.alloc[k]}%</b></div><div class="bar"><i style="width:${r.alloc[k]}%"></i></div></div>`).join("")}
     <div class="mut" style="font-size:12.5px;line-height:1.5">Exemplo com R$ 1.000: ${CLS.filter(([k]) => r.alloc[k] > 0).map(([k, n]) => `${n} ${fBRL(r.alloc[k] * 10)}`).join(" · ")}.</div></div>
     ${r.why.length ? secTitle("Por que assim") + `<div class="card">${r.why.map((w) => `<div style="padding:6px 0;line-height:1.45">• ${esc(w)}</div>`).join("")}</div>` : ""}
-    <button class="btn" id="q-use">${ic("target", "sm")} Usar como minhas metas</button><button class="btn ghost" id="q-share">${ic("share", "sm")} Compartilhar com um amigo</button><button class="btn ghost" id="q-redo">Refazer o questionário</button>
+    <div class="card" style="margin-top:10px"><div class="cv"><div style="font-weight:700">${ic("check", "sm")} Metas da carteira geradas por este perfil</div></div><div class="mut" style="font-size:12.5px;margin-top:4px">Já aplicadas na aba Carteira. Se mudar, toque em “Gerar metas pelo meu perfil” na aba Mais.</div></div>
+    <div class="card cta" data-go="#/recomendar" style="margin-top:10px"><div class="cta-i">${ic("target")}</div><div style="flex:1"><div style="font-weight:800;font-size:15px">Quer que eu recomende o que comprar agora?</div><div class="mut" style="font-size:13px;margin-top:3px">O Alfred monta a compra do mês, com os ativos que valem a pena hoje para o seu perfil.</div></div><span class="badge">SIM</span></div>
+    <button class="btn ghost" id="q-share">${ic("share", "sm")} Compartilhar com um amigo</button><button class="btn ghost" id="q-redo">Refazer o questionário</button>
     <p class="warn">Questionário de perfil (suitability) simplificado, parecido com o das corretoras. É um ponto de partida para estudo e não substitui orientação de um profissional credenciado. As respostas ficam só neste aparelho.</p>`;
   }
   const i = step === -1 ? 0 : step, q = QUIZ[i];
@@ -526,10 +621,9 @@ function vPerfil() {
   <div class="card" style="margin-top:12px"><div style="font-size:19px;font-weight:800;line-height:1.3;letter-spacing:-.01em;margin-bottom:12px">${q.q}</div>${q.o.map((o) => `<button class="btn ghost" data-ans="${q.k}|${o[0]}" style="text-align:left;margin-top:8px;font-weight:700">${esc(o[1])}</button>`).join("")}</div>${i > 0 ? `<button class="back" id="q-prev">${ic("back", "sm")} Pergunta anterior</button>` : ""}`;
 }
 function bindPerfil() {
-  document.querySelectorAll("[data-ans]").forEach((b) => b.addEventListener("click", () => { const [k, v] = b.dataset.ans.split("|"), a = store.get("quiz", {}); a[k] = v; store.set("quiz", a); if (QUIZ.every((q) => a[q.k])) store.set("perfil", { at: Date.now() }); render(); }));
+  document.querySelectorAll("[data-ans]").forEach((b) => b.addEventListener("click", () => { const [k, v] = b.dataset.ans.split("|"), a = store.get("quiz", {}); a[k] = v; store.set("quiz", a); if (QUIZ.every((q) => a[q.k])) { store.set("perfil", { at: Date.now() }); store.set("metas", profileOf(a).alloc); toast("Perfil pronto: metas da carteira geradas."); } render(); }));
   $("#q-prev")?.addEventListener("click", () => { const a = store.get("quiz", {}), last = [...QUIZ].reverse().find((q) => a[q.k]); if (last) delete a[last.k]; store.set("quiz", a); store.set("perfil", null); render(); });
   $("#q-redo")?.addEventListener("click", () => { store.set("quiz", {}); store.set("perfil", null); render(); });
-  $("#q-use")?.addEventListener("click", () => { store.set("metas", profileOf(store.get("quiz", {})).alloc); toast("Metas atualizadas."); location.hash = "#/carteira"; });
   $("#q-share")?.addEventListener("click", async () => {
     const r = profileOf(store.get("quiz", {})), text = `Meu perfil de investidor: ${r.name} (${r.score}/100).\nCarteira sugerida: ${CLS.filter(([k]) => r.alloc[k] > 0).map(([k, n]) => `${n} ${r.alloc[k]}%`).join(", ")}.\nFeito no VW Wallet Investments (material de estudo, não é recomendação).`;
     try { if (navigator.share) await navigator.share({ title: "Meu perfil de investidor", text, url: location.origin + location.pathname }); else { await navigator.clipboard.writeText(text + "\n" + location.origin + location.pathname); toast("Texto copiado."); } } catch {}
@@ -541,14 +635,14 @@ function vMais() {
   const T = { ...DEF_T, ...store.get("metas", {}) }, b = D.backtest, topic = store.get("ntfy", ""), pl = myPlats();
   let h = secTitle(`${ic("bell", "sm")} Notificações no celular`) + `<div class="card" style="line-height:1.55;font-size:14.5px">Para o VW Wallet avisar com o app fechado:<br>1. Instale o app <b>ntfy</b> (Play Store ou F-Droid).<br>2. Toque em <b>+</b> e assine o tópico secreto abaixo.<br>3. Nos Ajustes do Oppo, deixe o ntfy sem restrição de bateria e com início automático.<label>Seu tópico secreto</label><input id="ntfy" value="${esc(topic)}" placeholder="cole o tópico que o Alfred gerou"><button class="btn ghost" id="ntf-perm">Permitir avisos também aqui no app</button></div>`;
   h += secTitle(`${ic("wallet", "sm")} Minhas plataformas`) + `<div class="card"><div class="chips" id="pl-chips" style="margin:0 0 10px">${pl.map((p) => `<span class="chip on">${esc(p)} <button data-rmpl="${esc(p)}" aria-label="Remover" style="border:0;background:none;color:inherit;font-weight:800;cursor:pointer">×</button></span>`).join("") || '<span class="mut">Nenhuma ainda.</span>'}</div><label>Adicionar plataforma (digite as primeiras letras)</label><div><input id="pl-in" placeholder="ex.: xp, nu, rico, revolut…" autocomplete="off"></div><div class="mut" style="font-size:12px;margin-top:8px;line-height:1.5">O app mostra, para cada classe, em quais das suas plataformas dá para comprar. Confirme no app de cada uma: as ofertas mudam.</div></div>`;
-  h += secTitle(`${ic("target", "sm")} Metas da carteira (%)`) + `<div class="card">${CLS.map(([k, n]) => `<label>${n}</label><input data-meta="${k}" inputmode="decimal" value="${T[k]}">`).join("")}<button class="btn" id="meta-save">Salvar metas</button><div class="mut" style="font-size:12px;margin-top:8px">As metas são normalizadas para somar 100%. Padrão: a carteira do estudo de 26/10.</div></div>`;
+  h += secTitle(`${ic("target", "sm")} Metas da carteira (%)`) + `<div class="card"><button class="btn" id="meta-auto" style="margin-top:0">${ic("user", "sm")} Gerar metas pelo meu perfil</button><div class="mut" style="font-size:12px;margin-top:6px">Ou ajuste à mão (a soma vira 100%):</div><div class="grid2">${CLS.map(([k, n]) => `<div><label>${n}</label><input data-meta="${k}" inputmode="decimal" value="${T[k]}"></div>`).join("")}</div><button class="btn ghost" id="meta-save">Salvar metas</button></div>`;
   h += secTitle(`${ic("book", "sm")} O que o histórico mostra`) + `<div class="card" style="font-size:14.5px;line-height:1.55">`;
   if (b) { const p1 = (x) => (x == null ? "—" : fN(x * 100, 1) + "%"); h += `Regra: <i>${esc(b.rule)}</i>.<table style="margin-top:10px"><tr><th></th><th class="r">Com sinal</th><th class="r">Qualquer dia</th></tr><tr><td>6 meses depois (média)</td><td class="r num"><b>${p1(b.h6.avg)}</b></td><td class="r num">${p1(b.h6.base_avg)}</td></tr><tr><td>12 meses depois (média)</td><td class="r num"><b>${p1(b.h12.avg)}</b></td><td class="r num">${p1(b.h12.base_avg)}</td></tr><tr><td>Acerto em 12 meses</td><td class="r num"><b>${p1(b.h12.hit)}</b></td><td class="r"></td></tr></table><div class="mut" style="font-size:12.5px;margin-top:10px">${b.tickers} ativos de qualidade, 10 anos, preços ajustados por dividendos. A vantagem é pequena (2 a 3 pontos) e há viés: só entram ativos que sobreviveram, e sinais próximos se sobrepõem. O CDI não foi descontado. É um estudo, não uma promessa.</div>`; } else h += `<span class="mut">Estudo ainda não gerado.</span>`;
   h += `</div>` + secTitle(`${ic("shield", "sm")} Como o Alfred decide`) + `<div class="card" style="font-size:14.5px;line-height:1.6"><b>Oferta</b>: ativo de qualidade, 15% ou mais abaixo da máxima de 12 meses (FIIs, 8%), RSI baixo e sem tendência desastrosa.<br><b>Em espera</b>: boa oferta, mas o Ibovespa caiu forte: ele espera o mercado acalmar.<br><b>Esticada</b>: RSI alto e muito acima da média de 200 dias: pense em realizar parte.<br><b>Evitar</b>: queda enorme em ativo fora da lista de qualidade.<br>Ele só avisa no celular de ofertas fortes, no máximo 3 por vez, e não à noite.</div>`;
   h += X.maisExtras();
   h += secTitle(`${ic("book", "sm")} Dicionário do investidor`) + `<div class="card"><input id="dic-q" placeholder="Buscar: CDB, Selic, FII, RSI…" autocomplete="off"><div id="dic-list" style="margin-top:8px">${vDicionario()}</div></div>`;
-  h += secTitle("Meus dados") + `<div class="card"><button class="btn ghost" id="exp">Exportar cópia (arquivo)</button><button class="btn ghost" id="imp">Importar cópia</button><input type="file" id="impf" accept="application/json" style="display:none"><button class="btn ghost" id="wipe" style="color:var(--down)">Apagar tudo deste aparelho</button></div>`;
-  h += `<div class="about"><img src="icons/logo.svg" alt="" width="44" height="44"><div><b>VW Wallet Investments</b><div class="mut" style="font-size:12px">Versão 1.0 · feito para o Senhor Wayne</div></div></div><p class="warn">O Alfred é uma ferramenta de estudo. Não é recomendação personalizada nem substitui um profissional credenciado. Preços e dividendos vêm de fontes públicas com atraso e podem ter erros. Regras de imposto podem mudar. A decisão é sempre sua.</p>`;
+  h += secTitle(`${ic("shield", "sm")} Meus dados e backup`) + dados.dadosCard();
+  h += `<div class="about"><img src="icons/logo.svg" alt="" width="44" height="44"><div><b>VW Wallet Investments</b><div class="mut" style="font-size:12px">Versão 1.2 · feito para o Senhor Wayne</div></div></div><p class="warn">O Alfred é uma ferramenta de estudo. Não é recomendação personalizada nem substitui um profissional credenciado. Preços e dividendos vêm de fontes públicas com atraso e podem ter erros. Regras de imposto podem mudar. A decisão é sempre sua.</p>`;
   return h;
 }
 function bindMais() {
@@ -559,10 +653,8 @@ function bindMais() {
   document.querySelectorAll("[data-rmpl]").forEach((b) => b.addEventListener("click", () => { store.set("plats", myPlats().filter((p) => p !== b.dataset.rmpl)); render(); }));
   $("#meta-save")?.addEventListener("click", () => { const m = {}; document.querySelectorAll("[data-meta]").forEach((i) => (m[i.dataset.meta] = num(i.value) ?? 0)); store.set("metas", m); toast("Metas salvas."); });
   $("#ntf-perm")?.addEventListener("click", async () => { if (!("Notification" in window)) return toast("Este navegador não suporta avisos."); const r = await Notification.requestPermission(); toast(r === "granted" ? "Avisos liberados." : "Avisos não liberados."); });
-  $("#exp")?.addEventListener("click", () => { const blob = new Blob([JSON.stringify(Object.fromEntries(["posicoes", "metas", "ipca", "aporte", "plats", "fav", "alertas", "quiz"].map((k) => [k, store.get(k, null)])), null, 1)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "vw-wallet-backup.json"; a.click(); });
-  $("#imp")?.addEventListener("click", () => $("#impf").click());
-  $("#impf")?.addEventListener("change", async (e) => { try { const d = JSON.parse(await e.target.files[0].text()); Object.entries(d).forEach(([k, v]) => v != null && store.set(k, v)); toast("Importado."); render(); } catch { toast("Arquivo inválido."); } });
-  $("#wipe")?.addEventListener("click", () => { if (confirm("Apagar posições, metas e ajustes deste aparelho?")) { Object.keys(localStorage).filter((k) => k.startsWith("vw:")).forEach((k) => localStorage.removeItem(k)); render(); } });
+  dados.bindDados(render);
+  $("#meta-auto")?.addEventListener("click", () => { const qa = store.get("quiz", {}); if (!QUIZ.every((q) => qa[q.k])) { toast("Responda as 9 perguntas e eu gero as metas."); location.hash = "#/perfil"; return; } store.set("metas", profileOf(qa).alloc); toast("Metas geradas pelo seu perfil."); render(); });
 }
 
 // ------------------------------------------------------------------ BUSCA GLOBAL (como nos apps de corretora)
@@ -582,7 +674,7 @@ function renderSearch() {
 // ------------------------------------------------------------------ roteador
 async function render() {
   const view = $("#view"), hash = location.hash || "#/hoje", [, route, arg] = hash.split("/");
-  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (route === "ativo" ? "hoje" : route === "perfil" ? "carteira" : route === "ferramentas" || route === "aprender" ? "mais" : route)));
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (route === "ativo" ? "hoje" : route === "perfil" || route === "recomendar" ? "carteira" : route === "ferramentas" || route === "aprender" ? "mais" : route)));
   if (!D.summary) { view.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>'; return; }
   const s = D.summary; $("#upd").textContent = `Investments · ${ago(s.updated)}`;
   const rg = $("#regime"); rg.className = "pill " + s.regime.level; rg.textContent = REGIME[s.regime.level].p;
@@ -596,6 +688,7 @@ async function render() {
     $("#addpos")?.addEventListener("click", () => { const a = asset(arg); store.set("prefill", { sym: a.sym, type: a.type }); location.hash = "#/carteira"; });
     const rc = store.get("recent", []).filter((x) => x !== arg); rc.unshift(arg); store.set("recent", rc.slice(0, 8));
   } else if (route === "perfil") { view.innerHTML = vPerfil(); bindPerfil(); }
+  else if (route === "recomendar") { view.innerHTML = vRecomendar(); bindRecomendar(); }
   else if (route === "mercado") { view.innerHTML = vMercado(); hydrate(view);
     view.querySelectorAll("[data-mk]").forEach((b) => b.addEventListener("click", () => { mkTab = b.dataset.mk; render(); }));
     view.querySelectorAll("[data-mt]").forEach((b) => b.addEventListener("click", () => { mkType = b.dataset.mt; store.set("mkType", mkType); render(); }));
@@ -610,15 +703,20 @@ async function render() {
   else if (route === "ferramentas") { view.innerHTML = X.vFerramentas(); X.bindFerramentas(); }
   else if (route === "aprender") { view.innerHTML = X.vAprender(); X.bindAprender(render); }
   else if (route === "mais") { view.innerHTML = vMais(); bindMais(); }
-  else { view.innerHTML = vHoje(); hydrate(view); X.bindHoje(render); }
+  else { view.innerHTML = vHoje(); hydrate(view); X.bindHoje(render); dados.bindBanner(); }
   annotate(view);
   view.classList.remove("enter"); void view.offsetWidth; view.classList.add("enter");
   window.scrollTo(0, 0);
 }
 
 const X = makeExtras({ getD: () => D, store, esc, fN, fBRL, secTitle, ic, num, toast, CLS, CLS_COLOR, totals, todayBRT });
+const dados = makeDados({ store, toast, ic });
+let timer = null, lastRefresh = 0;
+const startTimer = () => { clearInterval(timer); timer = setInterval(refresh, 10 * 60 * 1000); };
 function boot() {
-  X.initLock();
+  X.initLock(); dados.persist();
+  // logos que não existem somem sem precisar de código dentro do HTML (permite política de segurança estrita)
+  document.addEventListener("error", (e) => { if (e.target?.tagName === "IMG" && e.target.closest?.(".logo")) e.target.remove(); }, true);
   $("#tabs").innerHTML = [["hoje", "home", "Hoje"], ["mercado", "chart", "Mercado"], ["noticias", "news", "Notícias"], ["carteira", "wallet", "Carteira"], ["mais", "grid", "Mais"]].map(([k, i, t], n) => `<button data-tab="${k}" class="${n === 0 ? "on" : ""}">${ic(i)}<span>${t}</span><span class="pip"></span></button>`).join("");
   $("#btn-search").innerHTML = ic("search");
   $("#s-back").innerHTML = ic("back");
@@ -638,8 +736,9 @@ function boot() {
   window.addEventListener("hashchange", () => { closeSearch(); closeTerm(); render(); });
   $("#upd").addEventListener("click", () => refresh(true));
   if (navigator.serviceWorker) navigator.serviceWorker.register("sw.js").catch(() => {});
-  restoreSnap(); render(); refresh();
-  setInterval(refresh, 5 * 60 * 1000);
+  restoreSnap(); render(); refresh(); startTimer();
+  // economia de bateria: com o app em segundo plano não há consulta nenhuma; ao voltar, atualiza se os dados têm mais de 5 minutos
+  document.addEventListener("visibilitychange", () => { if (document.hidden) clearInterval(timer); else { if (Date.now() - lastRefresh > 5 * 60 * 1000) refresh(); startTimer(); } });
 }
 async function notifyNew() {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
@@ -649,10 +748,10 @@ async function notifyNew() {
 }
 async function refresh(manual) {
   try {
-    const changed = await load(); await checkAlerts();
+    const changed = await load(manual); lastRefresh = Date.now(); await checkAlerts();
     const busy = ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName);
     if ((changed || manual || !$("#view").children.length) && !busy) await render();
-    notifyNew(); if (manual) toast("Atualizado.");
+    notifyNew(); notifySinais(); if (manual) toast("Atualizado.");
   } catch { $("#upd").textContent = "Sem conexão · último dado salvo"; }
 }
 boot();
