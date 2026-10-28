@@ -16,13 +16,16 @@ CREATE TABLE IF NOT EXISTS users (
   weekly_on INTEGER NOT NULL DEFAULT 0,     -- resumo semanal (domingo, 18h de Brasília)
   last_weekly TEXT,                         -- data do último resumo enviado
   tg TEXT,                                  -- id do usuário no Telegram (vínculo)
-  tg_chat TEXT                              -- chat privado do Telegram (onde o robô responde e escreve primeiro)
+  tg_chat TEXT,                             -- chat privado do Telegram (onde o robô responde e escreve primeiro)
+  modo TEXT NOT NULL DEFAULT 'p',           -- conta padrão dos próximos lançamentos: p = pessoal, e = empresa
+  saldos TEXT                               -- JSON {p:{v,ts,skip},e:{...}}: dinheiro informado em cada conta
 );
 CREATE TABLE IF NOT EXISTS expenses (
   user TEXT NOT NULL, id TEXT NOT NULL,
   ts TEXT NOT NULL,                         -- AAAA-MM-DD
   v REAL NOT NULL, c TEXT NOT NULL, d TEXT NOT NULL DEFAULT '',
   tp TEXT NOT NULL,                         -- gasto | receita
+  w TEXT NOT NULL DEFAULT 'p',              -- conta: p = pessoal, e = empresa
   src TEXT NOT NULL,                        -- app | wa
   deleted INTEGER NOT NULL DEFAULT 0,
   upd INTEGER NOT NULL,                     -- hora do servidor (ms) da última alteração

@@ -10,7 +10,11 @@ async function call(env, method, body, form = false) {
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 /** *negrito* e _itálico_ do texto do bot viram HTML do Telegram; o resto é escapado. */
-export const toHtml = (t) => esc(t).replace(/\*([^*\n]+)\*/g, "<b>$1</b>").replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?]|$)/g, "$1<i>$2</i>");
+export const toHtml = (t) => esc(t).replace(/\*([^*\n]+)\*/g, "<b>$1</b>").replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?]|$)/g, "$1<i>$2</i>").replace(/`([^`\n]+)`/g, "<code>$1</code>");
+
+/** Menu "/" do Telegram: lista os comandos para tocar, sem digitar. */
+export const MENU = [["comandos", "Todos os comandos"], ["resumo", "Resumo do mês"], ["ultimos", "Últimos lançamentos"], ["saldo", "Quanto sobra em cada conta"], ["relatorio", "Relatório em PDF"], ["planilha", "Planilha do mês"], ["modoempresa", "Anotar na conta da empresa"], ["modopessoal", "Anotar na conta pessoal"], ["desfazer", "Apagar o último lançamento"], ["apagartudo", "Apagar todos (pede confirmação)"], ["pararrelatorio", "Parar o relatório automático"], ["ajuda", "Como usar"]];
+export const setCommands = (env) => call(env, "setMyCommands", { commands: MENU.map(([command, description]) => ({ command, description })) });
 
 export const sendText = (env, chat, body) => call(env, "sendMessage", { chat_id: /^-?\d+$/.test(String(chat)) ? Number(chat) : chat, text: toHtml(String(body)).slice(0, 4000), parse_mode: "HTML", disable_web_page_preview: true });
 

@@ -1,11 +1,12 @@
 // Cérebro do bot de gastos: entende mensagens do WhatsApp, anota no banco, responde e envia relatórios.
-import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, norm } from "../../docs/gastos-core.js";
+import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, norm, parseConta, contaDe, contaNome, valorBR } from "../../docs/gastos-core.js";
+import { saldoConta } from "../../docs/gastos-plus.js";
 import { relatorioPdf } from "../../docs/relatorio.js";
 import * as WA from "./wa.js";
 import * as TG from "./tg.js";
 // "Endereço" de quem conversa: "tg:<chat>" é Telegram; qualquer outro valor é o número do WhatsApp. O resto do código não precisa saber a diferença.
 const via = (to) => (String(to).startsWith("tg:") ? TG : WA), idOf = (to) => String(to).replace(/^tg:/, "");
-const sendText = (env, to, body) => via(to).sendText(env, idOf(to), body);
+const sendText = (env, to, body) => via(to).sendText(env, idOf(to), String(to).startsWith("tg:") ? body : String(body).replace(/`/g, ""));
 const sendDocument = (env, to, bytes, fn, mime, cap) => via(to).sendDocument(env, idOf(to), bytes, fn, mime, cap);
 const downloadMedia = (env, to, id) => via(to).downloadMedia(env, id);
 const sendTemplate = WA.sendTemplate;
@@ -13,6 +14,45 @@ export const destino = (u) => (u.tg_chat ? "tg:" + u.tg_chat : u.wa_raw || u.wa)
 import { iaLigada, extrairMidia, extrairTexto } from "./ai.js";
 import { sendPush } from "./push.js";
 import { normWa } from "./util.js";
+
+/** Catálogo completo de comandos. No Telegram, /comando é link tocável e `texto` copia com um toque; no WhatsApp, só palavras em negrito. */
+function catalogo(tg) {
+  const c = (slash, wa, desc) => (tg ? `/${slash} — ${desc}` : `*${wa}* — ${desc}`);
+  return `🦅 *Tudo o que eu faço*
+${tg ? "_Toque em um /comando para usar. Toque em um texto em destaque para copiar e editar._" : "_Escreva a palavra em negrito para usar._"}
+
+*✍️ Anotar*
+\`gastei 45 no mercado\`
+\`uber 23,50 ontem\`
+\`+1500 salário\`
+\`empresa ração 3200\`
+\`diesel 450 granja\`
+🎙️ Áudio: conte o gasto falando
+🧾 Foto: nota fiscal ou comprovante de Pix
+
+*📊 Ver*
+${c("resumo", "resumo", "gastos e receitas do mês")}
+${c("ultimos", "últimos", "últimos lançamentos")}
+${c("saldo", "saldo", "quanto sobra em cada conta")}
+${c("relatorio", "relatório", "PDF do mês")}
+${c("planilha", "planilha", "planilha para o Excel")}
+\`resumo empresa\` · \`relatório setembro\`
+
+*🏢 Empresa e pessoal*
+${c("modoempresa", "modo empresa", "tudo que eu anotar vai para a empresa")}
+${c("modopessoal", "modo pessoal", "volta para o pessoal")}
+\`saldo empresa 100 mil\`
+\`saldo pessoal 20000\`
+
+*✏️ Corrigir*
+${c("desfazer", "desfazer", "apaga o último lançamento")}
+\`categoria transporte\` — corrige a categoria do último
+${c("apagartudo", "apagar todos os gastos", "apaga tudo (pede confirmação)")}
+
+*⏰ Automático*
+\`relatório automático dia 30\`
+${c("pararrelatorio", "parar relatório", "desliga o relatório automático")}`;
+}
 
 const DAY = 864e5, BRT = 3 * 3600e3;
 const addDays = (iso, n) => new Date(Date.parse(iso + "T12:00:00Z") + n * DAY).toISOString().slice(0, 10);
@@ -29,28 +69,38 @@ const AJUDA = `Olá! Eu anoto seus gastos. 🦅
 • *relatório* (PDF do mês) · *relatório setembro*
 • *planilha* (abre no Excel)
 • *resumo* · *últimos* · *desfazer* · *apagar todos os gastos* (pede confirmação)
+• *empresa ração 3200* ou *granja diesel 450* (conta da empresa; sem palavra vai para a pessoal)
+• *modo empresa* / *modo pessoal* (vale para os próximos lançamentos)
+• *saldo empresa 100 mil* · *saldo pessoal 20000* · *saldo* (quanto sobra em cada conta)
+• *comandos* (lista completa, com toque para usar ou copiar)
 • *categoria transporte* (corrige o último)
 • *relatório automático dia 30* · *parar relatório*`;
 
 // ------------------------------------------------------------------ banco
-const upsert = (env, user, it) => env.DB.prepare("INSERT INTO expenses(user,id,ts,v,c,d,tp,src,deleted,upd) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user,id) DO UPDATE SET ts=excluded.ts,v=excluded.v,c=excluded.c,d=excluded.d,tp=excluded.tp,deleted=excluded.deleted,upd=excluded.upd").bind(user, it.id, it.ts, it.v, it.c, it.d, it.tp, it.src, it.deleted ? 1 : 0, Date.now());
+const upsert = (env, user, it) => env.DB.prepare("INSERT INTO expenses(user,id,ts,v,c,d,tp,src,deleted,upd,w) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user,id) DO UPDATE SET ts=excluded.ts,v=excluded.v,c=excluded.c,d=excluded.d,tp=excluded.tp,deleted=excluded.deleted,upd=excluded.upd,w=excluded.w").bind(user, it.id, it.ts, it.v, it.c, it.d, it.tp, it.src, it.deleted ? 1 : 0, Date.now(), it.w === "e" ? "e" : "p");
 export async function salvarItens(env, user, itens) { if (itens.length) await env.DB.batch(itens.map((it) => upsert(env, user, it))); }
 export const upsertStmt = upsert;
 /** Lançamentos do mês e do mês anterior (o relatório compara os dois). */
 export async function doMes(env, user, ym) {
-  const { results } = await env.DB.prepare("SELECT id,ts,v,c,d,tp,src,deleted FROM expenses WHERE user=? AND deleted=0 AND ts>=? AND ts<?").bind(user, ymAdd(ym, -1) + "-01", ymAdd(ym, 1) + "-01").all();
+  const { results } = await env.DB.prepare("SELECT id,ts,v,c,d,tp,src,deleted,w FROM expenses WHERE user=? AND deleted=0 AND ts>=? AND ts<?").bind(user, ymAdd(ym, -1) + "-01", ymAdd(ym, 1) + "-01").all();
   return results;
+}
+const lerSaldos = (user) => { try { return JSON.parse(user.saldos || "{}") || {}; } catch { return {}; } };
+async function saldoAtual(env, user, w) {
+  const base = lerSaldos(user)[w]; if (!base) return null;
+  const { results } = await env.DB.prepare("SELECT id,ts,v,tp,w FROM expenses WHERE user=? AND deleted=0 AND w=? AND ts>=?").bind(user.id, w, base.ts).all();
+  return saldoConta(results, w, base);
 }
 const ultimo = (env, user) => env.DB.prepare("SELECT id,ts,v,c,d,tp FROM expenses WHERE user=? AND deleted=0 ORDER BY upd DESC LIMIT 1").bind(user).first();
 
 // ------------------------------------------------------------------ textos
 const rel = (ts, hoje) => (ts === hoje ? "hoje" : ts === addDays(hoje, -1) ? "ontem" : dBR(ts).slice(0, 5));
-function resumoTxt(S) {
-  let t = `📊 *${cap(ymLabel(S.ym))}*\nReceitas: ${fBRL(S.receitas)}\nGastos: ${fBRL(S.gastos)}\nInvestido: ${fBRL(S.investido)}\nSaldo: *${fBRL(S.saldo)}*`;
+function resumoTxt(S, conta) {
+  let t = `📊 *${cap(ymLabel(S.ym))}*${conta ? " · " + conta : ""}\nReceitas: ${fBRL(S.receitas)}\nGastos: ${fBRL(S.gastos)}\nInvestido: ${fBRL(S.investido)}\nSaldo: *${fBRL(S.saldo)}*`;
   if (S.porCat.length) t += "\n\nMaiores categorias:\n" + S.porCat.slice(0, 5).map((c) => `• ${c.n} ${fBRL(c.v)} (${Math.round(c.pct * 100)}%)`).join("\n");
   return t;
 }
-function linhaItem(it, hoje) { const c = catOf(it.c, it.tp); return `${it.tp === "receita" ? "💰" : "✅"} ${fBRL(it.v)} · ${c.n}${it.d && it.d !== c.n ? " · " + it.d : ""} · ${rel(it.ts, hoje)}`; }
+function linhaItem(it, hoje) { const c = catOf(it.c, it.tp); return `${it.tp === "receita" ? "💰" : "✅"}${contaDe(it) === "e" ? "🏢" : ""} ${fBRL(it.v)} · ${c.n}${it.d && it.d !== c.n ? " · " + it.d : ""} · ${rel(it.ts, hoje)}`; }
 
 /** Mês citado na frase: "setembro", "mês passado", "09/2026". Padrão: mês atual. */
 export function parseMes(n, hoje) {
@@ -155,7 +205,9 @@ export async function onTelegram(env, upd) {
   const ins = await env.DB.prepare("INSERT OR IGNORE INTO seen(id,t) VALUES(?,?)").bind("tg" + upd.update_id, Date.now()).run();
   if (!ins.meta.changes) return;
   const id = String(m.from.id), to = "tg:" + m.chat.id;
-  const text = String(m.text ?? m.caption ?? "").trim().replace(/^\/(\w+)(@\w+)?/, "$1").trim();
+  const SLASH = { modoempresa: "modo empresa", modopessoal: "modo pessoal", pararrelatorio: "parar relatorio", apagartudo: "apagar todos os gastos" };
+  let text = String(m.text ?? m.caption ?? "").trim().replace(/^\/(\w+)(@\w+)?/, "$1").trim();
+  text = SLASH[text.toLowerCase()] ?? text;
   const user = await env.DB.prepare("SELECT * FROM users WHERE tg=?").bind(id).first();
   if (!user) {
     const mm = /^(?:start|vincular)\s+(\d{6})$/i.exec(text.replace(/\s+/g, " "));
@@ -170,9 +222,11 @@ export async function onTelegram(env, upd) {
 }
 
 async function confirmar(env, user, from, itens) {
-  const hoje = hojeBRT(), ym = itens[0].ts.slice(0, 7), S = summarize(await doMes(env, user.id, ym), ym);
+  const hoje = hojeBRT(), ym = itens[0].ts.slice(0, 7), w = contaDe(itens[0]), saldos = lerSaldos(user), usaContas = w === "e" || user.modo === "e" || Object.keys(saldos).length > 0, S = summarize(await doMes(env, user.id, ym), ym, usaContas ? w : undefined);
   let t = itens.map((it) => linhaItem(it, hoje)).join("\n");
-  t += `\n\n${cap(ymLabel(ym).split(" ")[0])}: gastos ${fBRL(S.gastos)}` + (S.receitas ? ` · receitas ${fBRL(S.receitas)}` : "");
+  t += `\n\n${cap(ymLabel(ym).split(" ")[0])}${usaContas ? " · " + contaNome(w) : ""}: gastos ${fBRL(S.gastos)}` + (S.receitas ? ` · receitas ${fBRL(S.receitas)}` : "");
+  const sd = await saldoAtual(env, user, w); if (sd != null) t += `\n💼 Em conta (${contaNome(w)}): *${fBRL(sd)}*`;
+  if (user.modo === "e") t += "\n_Modo empresa ligado. Digite *modo pessoal* para voltar._";
   t += "\n_Errou? Digite *desfazer* ou *categoria ...*_";
   await sendText(env, from, t);
 }
@@ -195,14 +249,19 @@ async function texto(env, user, from, text) {
 Para continuar, responda *confirmo* (vale 5 minutos). Qualquer outra mensagem cancela.`);
   }
   if (pedido) await sendText(env, from, "Pedido de apagar tudo cancelado.");
-  if (/^(ajuda|help|menu|comandos|start|oi|ola|bom dia|boa tarde|boa noite|\?)$/.test(n)) return sendText(env, from, AJUDA);
+  if (/^(comandos|todos os comandos|lista de comandos|menu|o que voce faz|o que voce sabe fazer)$/.test(n)) {
+    const tg = String(from).startsWith("tg:");
+    if (tg) await TG.setCommands(env).catch(() => {});   // atualiza o menu "/" do Telegram
+    return sendText(env, from, catalogo(tg));
+  }
+  if (/^(ajuda|help|start|oi|ola|bom dia|boa tarde|boa noite|\?)$/.test(n)) return sendText(env, from, AJUDA);
   if (/^(desfazer|desfaz|apagar ultimo|apagar o ultimo|cancelar ultimo|errei)$/.test(n)) {
     const u = await ultimo(env, user.id); if (!u) return sendText(env, from, "Não há nada para desfazer.");
     await env.DB.prepare("UPDATE expenses SET deleted=1, upd=? WHERE user=? AND id=?").bind(Date.now(), user.id, u.id).run();
     return sendText(env, from, `↩️ Apaguei: ${fBRL(u.v)} · ${u.d || catOf(u.c, u.tp).n}`);
   }
   if (/^(ultimos|ultimas|lista|historico|extrato)( \d+)?$/.test(n)) {
-    const { results } = await env.DB.prepare("SELECT ts,v,c,d,tp FROM expenses WHERE user=? AND deleted=0 ORDER BY ts DESC, upd DESC LIMIT 10").bind(user.id).all();
+    const { results } = await env.DB.prepare("SELECT ts,v,c,d,tp,w FROM expenses WHERE user=? AND deleted=0 ORDER BY ts DESC, upd DESC LIMIT 10").bind(user.id).all();
     return sendText(env, from, results.length ? "🧾 *Últimos lançamentos*\n" + results.map((it) => linhaItem(it, hoje)).join("\n") : "Ainda não há lançamentos.");
   }
   let mm;
@@ -221,16 +280,41 @@ Para continuar, responda *confirmo* (vale 5 minutos). Qualquer outra mensagem ca
   }
   if (/^(relatorio|pdf)\b/.test(n)) { const ym = parseMes(n, hoje); await sendText(env, from, `Gerando o relatório de ${ymLabel(ym)}…`); await env.DB.prepare("UPDATE users SET pending_report=NULL WHERE id=?").bind(user.id).run(); return enviarRelatorio(env, user, ym, { to: from }); }
   if (/^(planilha|csv|excel|exportar)\b/.test(n)) { const ym = parseMes(n, hoje); return enviarRelatorio(env, user, ym, { csv: true, pdf: false, to: from }); }
-  if (/^(resumo|saldo|quanto gastei|balanco)\b/.test(n)) { const ym = parseMes(n, hoje); return sendText(env, from, resumoTxt(summarize(await doMes(env, user.id, ym), ym))); }
+  if ((mm = /^modo( (empresa|empresarial|granjas?|negocio|pessoal))?$/.exec(n))) {
+    if (!mm[2]) return sendText(env, from, `Modo atual: *${contaNome(user.modo)}*. Digite *modo empresa* ou *modo pessoal* para trocar.`);
+    const w = /pessoal/.test(mm[2]) ? "p" : "e"; await env.DB.prepare("UPDATE users SET modo=? WHERE id=?").bind(w, user.id).run(); user.modo = w;
+    return sendText(env, from, w === "e" ? "🏢 Modo *empresa* ligado: o que eu anotar agora vai para a conta da Empresa. Digite *modo pessoal* para voltar." : "👤 Modo *pessoal* ligado: o que eu anotar agora vai para a conta Pessoal.");
+  }
+  const NC = "(empresa|empresarial|granjas?|negocio|pessoal)";
+  if ((mm = new RegExp("^(?:saldo|caixa|tenho)\\s+(?:d[aeo]s?\\s+|n[aeo]s?\\s+)?" + NC + "\\s+(?:em\\s+)?(.+)$").exec(n)) || (mm = new RegExp("^tenho\\s+(.+?)\\s+(?:n[aeo]s?|d[aeo]s?)\\s+" + NC + "$").exec(n)) && ((mm = [mm[0], mm[2], mm[1]]))) {
+    const w = /pessoal/.test(mm[1]) ? "p" : "e", v = valorBR(mm[2]);
+    if (v == null) return sendText(env, from, "Não entendi o valor. Exemplo: *saldo empresa 100 mil* ou *saldo pessoal 20000*.");
+    const { results } = await env.DB.prepare("SELECT id FROM expenses WHERE user=? AND deleted=0 AND w=? AND ts>=? LIMIT 200").bind(user.id, w, hoje).all();
+    const sd = lerSaldos(user); sd[w] = { v, ts: hoje, skip: results.map((r) => r.id) };
+    await env.DB.prepare("UPDATE users SET saldos=? WHERE id=?").bind(JSON.stringify(sd), user.id).run(); user.saldos = JSON.stringify(sd);
+    return sendText(env, from, `💼 Anotei: *${contaNome(w)}* com ${fBRL(v)}. A partir de agora eu desconto os gastos e somo as receitas dessa conta. Digite *saldo* para ver quanto sobra.`);
+  }
+  if ((mm = new RegExp("^(?:saldo|caixa|contas?|quanto tenho)(?:\\s+(?:d[aeo]s?\\s+|n[aeo]s?\\s+)?" + NC + ")?$").exec(n))) {
+    const sd = lerSaldos(user), alvo = mm[1] ? [/pessoal/.test(mm[1]) ? "p" : "e"] : ["p", "e"].filter((k) => sd[k]);
+    if (alvo.length && alvo.every((k) => sd[k])) {
+      const linhasSd = []; for (const k of alvo) linhasSd.push(`${k === "e" ? "🏢" : "👤"} ${contaNome(k)}: *${fBRL(await saldoAtual(env, user, k))}* (informado ${fBRL(sd[k].v)} em ${dBR(sd[k].ts)})`);
+      return sendText(env, from, "💼 *Dinheiro em conta (estimado)*\n" + linhasSd.join("\n") + "\n_Vale só o que foi anotado aqui._");
+    }
+    if (mm[1] || !/^saldo$/.test(n)) return sendText(env, from, "Ainda não sei quanto você tem. Diga, por exemplo: *saldo empresa 100 mil* e *saldo pessoal 20000*.");
+  }
+  if (/^(resumo|saldo|quanto gastei|balanco)\b/.test(n)) { const ym = parseMes(n, hoje), its = await doMes(env, user.id, ym), cw = new RegExp("\\b" + NC + "\\b").exec(n);
+    if (cw) { const w = /pessoal/.test(cw[1]) ? "p" : "e"; return sendText(env, from, resumoTxt(summarize(its, ym, w), contaNome(w))); }
+    if (its.some((x) => contaDe(x) === "e" && x.ts.startsWith(ym))) return sendText(env, from, resumoTxt(summarize(its, ym, "p"), "Pessoal") + "\n\n" + resumoTxt(summarize(its, ym, "e"), "Empresa"));
+    return sendText(env, from, resumoTxt(summarize(its, ym))); }
 
-  const p = parseMessage(text, hoje);
+  const pc = parseConta(text), wl = pc.w || (user.modo === "e" ? "e" : "p"), p = parseMessage(pc.text, hoje);
   if (p.ok) {
-    const it = { id: newId(), ts: p.date, v: p.v, c: p.c, d: p.d, tp: p.tp, src: "wa" };
+    const it = { id: newId(), ts: p.date, v: p.v, c: p.c, d: p.d, tp: p.tp, src: "wa", w: wl };
     await salvarItens(env, user.id, [it]); return confirmar(env, user, from, [it]);
   }
   if (iaLigada(env) && /\d/.test(text) && (await usaIa(env, user))) {
-    const r = await extrairTexto(env, text, hoje);
-    if (r.itens.length) { await salvarItens(env, user.id, r.itens); return confirmar(env, user, from, r.itens); }
+    const r = await extrairTexto(env, pc.text, hoje), its = r.itens.map((x) => ({ ...x, w: wl }));
+    if (its.length) { await salvarItens(env, user.id, its); return confirmar(env, user, from, its); }
   }
   return sendText(env, from, "Não achei um valor na sua mensagem. Escreva, por exemplo: *gastei 45 no mercado*. Digite *ajuda* para ver tudo.");
 }
@@ -243,9 +327,10 @@ async function midia(env, user, from, id, kind) {
   const { bytes, mime } = await downloadMedia(env, from, id); await ack;
   const r = await extrairMidia(env, { kind: kind === "audio" ? "audio" : "image", mime: mime || (kind === "audio" ? "audio/ogg" : "image/jpeg"), bytes, hoje: hojeBRT() });
   if (!r.itens.length) return sendText(env, from, kind === "audio" ? "Ouvi o áudio, mas não achei valores. Tente dizer, por exemplo: \"gastei quarenta e cinco reais no mercado\"." : "Não consegui ler um valor nessa foto. Tente uma foto mais de perto, com o total visível, ou escreva o gasto.");
-  await salvarItens(env, user.id, r.itens);
+  const its = r.itens.map((x) => ({ ...x, w: user.modo === "e" ? "e" : "p" }));
+  await salvarItens(env, user.id, its);
   if (kind === "audio" && r.transcricao) await sendText(env, from, `🎙️ Entendi: “${r.transcricao}”`);
-  await confirmar(env, user, from, r.itens);
+  await confirmar(env, user, from, its);
 }
 
 // ------------------------------------------------------------------ resumo semanal

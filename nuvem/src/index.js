@@ -70,7 +70,7 @@ async function api(req, env, ctx, url) {
   if (p === "/api/status") {
     if (!user) return json({ linked: false, settings: null, push: 0, ia: iaLigada(env), canais: canais(env), now: Date.now() });
     let subs = []; try { subs = JSON.parse(user.push || "[]"); } catch {}
-    return json({ linked: !!(user.wa || user.tg), canal: user.tg ? "telegram" : user.wa ? "whatsapp" : null, canais: canais(env), tg: user.tg ? "Telegram ••" + String(user.tg).slice(-3) : "", wa: maskWa(user.wa), settings: { report_on: user.report_on, report_day: user.report_day, report_hour: user.report_hour, weekly_on: user.weekly_on }, push: subs.length, ia: iaLigada(env), now: Date.now() });
+    return json({ linked: !!(user.wa || user.tg), canal: user.tg ? "telegram" : user.wa ? "whatsapp" : null, canais: canais(env), tg: user.tg ? "Telegram ••" + String(user.tg).slice(-3) : "", wa: maskWa(user.wa), settings: { report_on: user.report_on, report_day: user.report_day, report_hour: user.report_hour, weekly_on: user.weekly_on, modo: user.modo || "p", saldos: (() => { try { return JSON.parse(user.saldos || "null"); } catch { return null; } })() }, push: subs.length, ia: iaLigada(env), now: Date.now() });
   }
   if (p === "/api/register" && req.method === "POST") {
     const code = randCode();
@@ -81,7 +81,7 @@ async function api(req, env, ctx, url) {
     const now = Date.now(), b = await readJson(req), since = Math.max(0, +b.since || 0);
     const stmts = []; for (const raw of (Array.isArray(b.items) ? b.items : []).slice(0, 500)) { const it = cleanItem(raw); if (it) stmts.push(upsertStmt(env, user.id, it)); }
     if (stmts.length) await env.DB.batch(stmts);
-    const { results } = await env.DB.prepare("SELECT id,ts,v,c,d,tp,src,deleted,upd FROM expenses WHERE user=? AND upd>? ORDER BY upd LIMIT 2000").bind(user.id, since).all();
+    const { results } = await env.DB.prepare("SELECT id,ts,v,c,d,tp,src,deleted,upd,w FROM expenses WHERE user=? AND upd>? ORDER BY upd LIMIT 2000").bind(user.id, since).all();
     return json({ now: results.length === 2000 ? results[results.length - 1].upd : now, items: results });
   }
   if (p === "/api/settings" && req.method === "POST") {
@@ -91,6 +91,11 @@ async function api(req, env, ctx, url) {
     const dia = b.report_day === undefined ? user.report_day : c(b.report_day, 1, 31, 30), hora = b.report_hour === undefined ? user.report_hour : c(b.report_hour, 6, 22, 8);
     const sem = b.weekly_on === undefined ? user.weekly_on : b.weekly_on ? 1 : 0;
     await env.DB.prepare("UPDATE users SET report_on=?, report_day=?, report_hour=?, weekly_on=? WHERE id=?").bind(on, dia, hora, sem, user.id).run();
+    if (b.modo === "p" || b.modo === "e") await env.DB.prepare("UPDATE users SET modo=? WHERE id=?").bind(b.modo, user.id).run();
+    if (b.saldos && typeof b.saldos === "object") {
+      const out = {}; for (const k of ["p", "e"]) { const x = b.saldos[k]; if (x && isFinite(+x.v) && Math.abs(+x.v) < 1e11 && /^\d{4}-\d{2}-\d{2}$/.test(String(x.ts))) out[k] = { v: Math.round(+x.v * 100) / 100, ts: String(x.ts), skip: (Array.isArray(x.skip) ? x.skip : []).map((s) => String(s).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32)).slice(0, 200) }; }
+      await env.DB.prepare("UPDATE users SET saldos=? WHERE id=?").bind(JSON.stringify(out), user.id).run();
+    }
     return json({ ok: true });
   }
   if (p === "/api/push/subscribe" && req.method === "POST") {

@@ -101,8 +101,8 @@ export const ymAdd = (ym, n) => { const d = new Date(Date.UTC(+ym.slice(0, 4), +
 export const dBR = (iso) => `${iso.slice(8)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
 /** Resumo de um mês. Investimentos não entram em "gastos": aparecem como "investido". */
-export function summarize(list, ym) {
-  const itens = list.filter((x) => !x.deleted && x.ts.startsWith(ym)).sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+export function summarize(list, ym, w) {
+  const itens = list.filter((x) => !x.deleted && x.ts.startsWith(ym) && (!w || contaDe(x) === w)).sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
   let gastos = 0, receitas = 0, investido = 0; const por = {};
   for (const x of itens) {
     if (x.tp === "receita") receitas += x.v;
@@ -117,9 +117,9 @@ export function summarize(list, ym) {
 /** CSV para Excel/Planilhas em português: separador ";", vírgula decimal, UTF-8 com BOM. */
 export function toCsv(list) {
   const q = (s) => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  const rows = [["Data", "Tipo", "Categoria", "Descrição", "Valor (R$)", "Origem"].map(q).join(";")];
+  const rows = [["Data", "Tipo", "Categoria", "Descrição", "Valor (R$)", "Origem", "Conta"].map(q).join(";")];
   for (const x of [...list].filter((x) => !x.deleted).sort((a, b) => (a.ts < b.ts ? -1 : 1)))
-    rows.push([q(dBR(x.ts)), q(x.tp === "receita" ? "Receita" : "Gasto"), q(catOf(x.c, x.tp).n), q(x.d), q(String(x.v.toFixed(2)).replace(".", ",")), q(x.src === "wa" ? "WhatsApp" : "App")].join(";"));
+    rows.push([q(dBR(x.ts)), q(x.tp === "receita" ? "Receita" : "Gasto"), q(catOf(x.c, x.tp).n), q(x.d), q(String(x.v.toFixed(2)).replace(".", ",")), q(x.src === "wa" ? "WhatsApp" : "App"), q(contaDe(x) === "e" ? "Empresa" : "Pessoal")].join(";"));
   return "﻿" + rows.join("\r\n") + "\r\n";
 }
 
@@ -132,5 +132,25 @@ export function cleanItem(x) {
   if (!isFinite(v) || v <= 0 || v > 1e9 || !/^\d{4}-\d{2}-\d{2}$/.test(ts)) return null;
   const tp = x.tp === "receita" ? "receita" : "gasto";
   const cs = (tp === "receita" ? CATS_REC : CATS).map((c) => c.k);
-  return { id: (String(x.id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) || newId()), ts, v: Math.round(v * 100) / 100, c: cs.includes(x.c) ? x.c : tp === "receita" ? "outras_receitas" : "outros", d: String(x.d ?? "").slice(0, 120), tp, src: x.src === "wa" ? "wa" : "app", deleted: x.deleted ? 1 : 0 };
+  return { id: (String(x.id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) || newId()), ts, v: Math.round(v * 100) / 100, c: cs.includes(x.c) ? x.c : tp === "receita" ? "outras_receitas" : "outros", d: String(x.d ?? "").slice(0, 120), tp, src: x.src === "wa" ? "wa" : "app", deleted: x.deleted ? 1 : 0, ...(x.w === "e" ? { w: "e" } : {}) };
+}
+
+// ------------------------------------------------------------ contas: Pessoal e Empresa (granjas)
+export const CONTAS = [{ k: "p", n: "Pessoal" }, { k: "e", n: "Empresa" }];
+export const contaDe = (x) => (x && x.w === "e" ? "e" : "p");
+export const contaNome = (w) => (w === "e" ? "Empresa" : "Pessoal");
+/** Valor em reais escrito de qualquer jeito: "100000", "100.000", "100,50", "R$ 100 mil". */
+export function valorBR(s) {
+  let t = String(s ?? "").toLowerCase().replace(/r\$/g, "").replace(/reais|real/g, "").trim();
+  const mil = /\bmil\b/.test(t); t = t.replace(/\bmil\b/, "").trim();
+  let n = num(t); if (n == null || !isFinite(n)) return null;
+  if (mil) n *= 1000; return n > 0 && n < 1e10 ? Math.round(n * 100) / 100 : null;
+}
+/** Tira do começo ou do fim da frase a palavra que diz a conta ("empresa ração 3200", "diesel 450 granja"). */
+export function parseConta(text) {
+  let t = String(text ?? "").trim(), w = null, m;
+  const nm = "(empresa|empresarial|granjas?|negocio|negócio|pessoal)", ehP = (s) => /pessoal/i.test(s);
+  if ((m = new RegExp("^" + nm + "\\s*[:,\\-]?\\s+", "i").exec(t))) { w = ehP(m[1]) ? "p" : "e"; t = t.slice(m[0].length); }
+  else if ((m = new RegExp("[\\s,\\-]+(?:na |da |do |no |de )?" + nm + "\\s*$", "i").exec(t))) { w = ehP(m[1]) ? "p" : "e"; t = t.slice(0, m.index); }
+  return { w, text: t.trim() };
 }

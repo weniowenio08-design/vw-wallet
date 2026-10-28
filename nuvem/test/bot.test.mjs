@@ -132,6 +132,32 @@ test("apagar todos os gastos pede confirmação; só 'confirmo' apaga; outra men
   await zap(txt("apagar tudo")); assert.match(ultima(), /nenhum lançamento/);
 });
 
+test("contas: palavra empresa/granja separa; modo; saldo informado desconta; resumo por conta", async () => {
+  await vincula();
+  await zap(txt("gastei 50 no mercado"));
+  await zap(txt("empresa ração 3200")); assert.match(ultima(), /🏢[\s\S]*Empresa/);
+  await zap(txt("diesel 450 granja"));
+  let rows = linhas("SELECT v,w FROM expenses ORDER BY upd"); assert.deepEqual(rows.map((r) => r.w), ["p", "e", "e"]);
+  await zap(txt("saldo empresa 100 mil")); assert.match(ultima(), /Empresa.*100\.000,00/);
+  await zap(txt("tenho 20000 na pessoal")); assert.match(ultima(), /Pessoal.*20\.000,00/);
+  await zap(txt("granja vacinas 1000")); assert.match(ultima(), /Em conta \(Empresa\): \*R\$\s99\.000,00/);
+  await zap(txt("+5000 venda de ovos empresa")); assert.match(ultima(), /Em conta \(Empresa\): \*R\$\s104\.000,00/);
+  await zap(txt("saldo")); assert.match(ultima(), /Pessoal: \*R\$\s20\.000,00[\s\S]*Empresa: \*R\$\s104\.000,00/);
+  await zap(txt("modo empresa")); assert.match(ultima(), /Modo \*empresa\*/);
+  await zap(txt("frete 300")); assert.equal(linhas("SELECT w FROM expenses ORDER BY upd DESC LIMIT 1")[0].w, "e");
+  await zap(txt("pessoal farmácia 40")); assert.equal(linhas("SELECT w FROM expenses ORDER BY upd DESC LIMIT 1")[0].w, "p");
+  await zap(txt("modo pessoal")); await zap(txt("uber 20")); assert.equal(linhas("SELECT w FROM expenses ORDER BY upd DESC LIMIT 1")[0].w, "p");
+  await zap(txt("resumo")); assert.match(ultima(), /Pessoal[\s\S]*Empresa/);
+  await zap(txt("resumo empresa")); assert.match(ultima(), /Empresa[\s\S]*Gastos: R\$\s4\.950,00/);
+  const { body } = await api("/api/status"); assert.equal(body.settings.saldos.e.v, 100000);
+});
+
+test("comandos: catálogo no Telegram tem /links e texto copiável", async () => {
+  await vinculaTg(); await tgz({ text: "/comandos" });
+  const t = saidas.filter((x) => x.tg && x.type === "text").at(-1).text.body; assert.match(t, /\/resumo/); assert.match(t, /<code>gastei 45 no mercado<\/code>/); assert.match(t, /\/modoempresa/);
+  await tgz({ text: "/modoempresa" }); assert.match(saidas.filter((x) => x.tg).at(-1).text.body, /Modo <b>empresa<\/b>/);
+});
+
 test("repetição do mesmo id é ignorada", async () => {
   await vincula();
   const raw = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ id: "dup1", from: WA, ...txt("gastei 9 no cafe") }] } }] }] });

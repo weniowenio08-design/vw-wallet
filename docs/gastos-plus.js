@@ -1,6 +1,6 @@
 // Lógica pura dos recursos extras da aba Gastos (sem DOM): orçamentos, limite do mês, comparativo, série de 6 meses,
 // gastos fixos que se lançam sozinhos, meta de economia e busca. Usada pela tela (gastos.js) e testada em nuvem/test.
-import { summarize, ymAdd, catOf, norm } from "./gastos-core.js";
+import { summarize, ymAdd, catOf, norm, contaDe } from "./gastos-core.js";
 
 const two = (n) => String(n).padStart(2, "0");
 const diasDoMes = (ym) => new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5), 0)).getUTCDate();
@@ -69,4 +69,13 @@ export const sobraDoMes = (S) => Math.max(0, Math.round((S.receitas - S.gastos -
 export function filtrar(itens, { q = "", cat = "" } = {}) {
   const t = norm(q);
   return itens.filter((x) => (!cat || x.c === cat) && (!t || norm(`${x.d} ${catOf(x.c, x.tp).n}`).includes(t)));
+}
+
+/** Dinheiro estimado em uma conta: saldo informado + receitas - gastos lançados depois dele.
+ *  base = { v, ts: "AAAA-MM-DD", skip: [ids] }. Os lançamentos que já existiam no dia em que o saldo foi informado (skip) já estão dentro dele. */
+export function saldoConta(list, w, base) {
+  if (!base || !isFinite(base.v)) return null;
+  const skip = new Set(base.skip || []); let s = base.v;
+  for (const x of list) { if (x.deleted || contaDe(x) !== w || x.ts < base.ts || skip.has(x.id)) continue; s += x.tp === "receita" ? x.v : -x.v; }
+  return Math.round(s * 100) / 100;
 }
