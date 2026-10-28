@@ -1,3 +1,10 @@
 SEGREDOS-NAO-COMPARTILHAR.txt
 node_modules/
 *.log
+
+# Uiraçu
+identidade/
+nuvem/.segredos/
+nuvem/.wrangler/
+nuvem/.dev.vars
+*.pdf

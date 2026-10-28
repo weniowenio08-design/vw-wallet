@@ -3,32 +3,40 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://uiracu-nuvem.uiracu.workers.dev; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="description" content="Acompanhe o mercado e veja a hora de comprar e de vender, de acordo com o seu perfil de investidor. Gratuito e sem cadastro: seus dados ficam só no seu celular.">
 <meta property="og:type" content="website">
-<meta property="og:title" content="VW Wallet Investments">
+<meta property="og:title" content="Uiraçu">
 <meta property="og:description" content="Acompanhe o mercado e veja a hora de comprar e de vender, de acordo com o seu perfil. Gratuito, sem cadastro; seus dados ficam só no seu celular.">
 <meta property="og:image" content="https://weniowenio08-design.github.io/vw-wallet/icons/og.png">
 <meta property="og:url" content="https://weniowenio08-design.github.io/vw-wallet/">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#F5C400">
+<meta name="theme-color" content="#F2A900">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="VW Wallet">
-<title>VW Wallet Investments</title>
+<meta name="apple-mobile-web-app-title" content="Uiraçu">
+<title>Uiraçu</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="icons/logo.svg">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/BricolageGrotesque-Bold.woff" as="font" type="font/woff" crossorigin>
 <link rel="modulepreload" href="main.js">
 <link rel="modulepreload" href="extras.js">
 <link rel="modulepreload" href="dados.js">
+<link rel="modulepreload" href="gastos.js">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="splash" role="img" aria-label="Uiraçu, olho de harpia">
+  <svg class="sp-mark" viewBox="40 24 432 430" aria-hidden="true"><g class="f" style="--r:-72deg;--i:7"><path d="M164.0,265.6 Q113.9,266.4 83.6,225.0 Q126.9,226.5 173.0,237.6 Z" fill="#F3F0E8"/></g><g class="f" style="--r:-54deg;--i:5"><path d="M172.9,237.8 Q113.5,214.8 85.1,160.1 Q138.2,180.8 190.2,214.0 Z" fill="#F3F0E8"/></g><g class="f" style="--r:-36deg;--i:3"><path d="M190.0,214.2 Q132.9,163.3 113.9,95.5 Q166.9,138.6 213.8,196.9 Z" fill="#F3F0E8"/></g><g class="f" style="--r:-18deg;--i:1"><path d="M213.6,197.0 Q172.3,122.6 171.1,47.9 Q212.2,109.6 241.6,188.0 Z" fill="#F3F0E8"/></g><g class="f" style="--r:0deg;--i:0"><path d="M241.3,188.0 Q235.0,100.0 256.0,28.0 Q277.0,100.0 270.7,188.0 Z" fill="#F3F0E8"/></g><g class="f" style="--r:18deg;--i:2"><path d="M270.4,188.0 Q299.8,109.6 340.9,47.9 Q339.7,122.6 298.4,197.0 Z" fill="#F3F0E8"/></g><g class="f" style="--r:36deg;--i:4"><path d="M298.2,196.9 Q345.1,138.6 398.1,95.5 Q379.1,163.3 322.0,214.2 Z" fill="#F3F0E8"/></g><g class="f" style="--r:54deg;--i:6"><path d="M321.8,214.0 Q373.8,180.8 426.9,160.1 Q398.5,214.8 339.1,237.8 Z" fill="#F3F0E8"/></g><g class="f" style="--r:72deg;--i:8"><path d="M339.0,237.6 Q385.1,226.5 428.4,225.0 Q398.1,266.4 348.0,265.6 Z" fill="#F3F0E8"/></g><g class="head"><circle cx="256" cy="300" r="122" fill="#F3F0E8"/></g><g class="face"><path d="M156.0,264.0 Q256.0,230.0 356.0,264.0 L344.0,344.0 Q316.0,418.0 256.0,432.0 Q196.0,418.0 168.0,344.0 Z" fill="#1A2024"/></g><g class="eye"><ellipse cx="206" cy="296" rx="30" ry="25" fill="#F2A900"/><circle cx="209" cy="299" r="11" fill="#0D0F10"/><polygon points="250.0,252.0 168.0,278.0 168.0,298.0 250.0,292.0" fill="#1A2024" transform="rotate(16 206 286)"/></g><g class="eye"><ellipse cx="306" cy="296" rx="30" ry="25" fill="#F2A900"/><circle cx="303" cy="299" r="11" fill="#0D0F10"/><polygon points="262.0,252.0 344.0,278.0 344.0,298.0 262.0,292.0" fill="#1A2024" transform="rotate(-16 306 286)"/></g><g class="beak"><path d="M256.0,286.0 C290.0,290.0 296.0,336.0 282.0,370.0 C274.0,392.0 264.0,408.0 256.0,422.0 C248.0,408.0 238.0,392.0 230.0,370.0 C216.0,336.0 222.0,290.0 256.0,286.0 Z" fill="#F3F0E8"/><ellipse cx="245" cy="322" rx="4" ry="7" fill="#1A2024" transform="rotate(20 245 322)"/><ellipse cx="267" cy="322" rx="4" ry="7" fill="#1A2024" transform="rotate(-20 267 322)"/></g></svg>
+  <div class="sp-name">uiraçu</div>
+  <div class="sp-phrase">Veja de cima.<br>Ataque com calma.</div>
+  <div class="sp-tag">olho de harpia</div>
+</div>
 <header>
-  <a class="brand" id="brand" role="button" aria-label="VW Wallet Investments: início">
+  <a class="brand" id="brand" role="button" aria-label="Uiraçu: início">
     <img src="icons/logo.svg" alt="" width="36" height="36">
-    <div><h1>VW Wallet</h1><div class="sub" id="upd">Investments · carregando…</div></div>
+    <div><h1>Uiraçu</h1><div class="sub" id="upd">olho de harpia · carregando…</div></div>
   </a>
   <div class="hr"><button class="icbtn" id="btn-search" aria-label="Buscar ativos"></button><div class="pill" id="regime">—</div></div>
 </header>

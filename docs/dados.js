@@ -1,4 +1,4 @@
-// VW Wallet: proteção e backup dos dados do usuário. Tudo local; nada é enviado a servidor.
+// Uiraçu: proteção e backup dos dados do usuário. Tudo local; nada é enviado a servidor.
 // - pede ao Chrome para NÃO apagar os dados do app sozinho (storage.persist)
 // - cria um arquivo de backup (opcionalmente criptografado com senha, AES-GCM) para guardar no celular, no Drive, etc.
 // - restaura o backup depois de reinstalar o app
@@ -74,7 +74,7 @@ export function makeDados(c) {
     document.getElementById("bk-share")?.addEventListener("click", async () => {
       if (!passOk()) return;
       const f = await mk();
-      try { if (navigator.canShare?.({ files: [f] })) { await navigator.share({ files: [f], title: "Backup do VW Wallet" }); stamp(); toast("Backup enviado."); render(); } else toast("Este aparelho não envia arquivos daqui: use Salvar backup."); } catch {}
+      try { if (navigator.canShare?.({ files: [f] })) { await navigator.share({ files: [f], title: "Backup do Uiraçu" }); stamp(); toast("Backup enviado."); render(); } else toast("Este aparelho não envia arquivos daqui: use Salvar backup."); } catch {}
     });
     document.getElementById("bk-restore")?.addEventListener("click", () => document.getElementById("bk-file").click());
     document.getElementById("bk-file")?.addEventListener("change", async (e) => {

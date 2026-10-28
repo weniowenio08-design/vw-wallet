@@ -1,4 +1,4 @@
-name: Alfred - cérebro (vigia o mercado e publica o app)
+name: Uiraçu - cérebro (vigia o mercado e publica o app)
 
 on:
   schedule:
@@ -13,7 +13,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: alfred-cerebro
+  group: uiracu-cerebro
   cancel-in-progress: false
 
 jobs:
@@ -31,6 +31,8 @@ jobs:
         run: node brain/run.mjs
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          UIRACU_API: ${{ vars.UIRACU_API }}
+          BRAIN_SECRET: ${{ secrets.BRAIN_SECRET }}
           APP_URL: ${{ vars.APP_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       - name: Estudo histórico (às segundas, ou se ainda não existir)
@@ -39,8 +41,8 @@ jobs:
       - name: Guardar o estado (para não repetir avisos) e marcar atividade
         run: |
           date -u +%F > state/heartbeat.txt
-          git config user.name "alfred-bot"
-          git config user.email "alfred-bot@users.noreply.github.com"
+          git config user.name "uiracu-bot"
+          git config user.email "uiracu-bot@users.noreply.github.com"
           git add state
           (git diff --cached --quiet || git commit -m "estado do cérebro [skip ci]") && git push || true
       - uses: actions/configure-pages@v5

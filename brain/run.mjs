@@ -253,6 +253,16 @@ async function ntfy(topic, msg) {
   });
   if (!r.ok) throw new Error("ntfy HTTP " + r.status);
 }
+// Aviso push pela nuvem do Uiraçu: chega com o ícone e o selo do próprio app, sem instalar outro aplicativo.
+// Devolve quantos aparelhos receberam (0 = ninguém inscrito ainda; aí o ntfy continua como reserva).
+async function pushNuvem(m, app) {
+  const api = process.env.UIRACU_API, secret = process.env.BRAIN_SECRET;
+  if (!api || !secret) return 0;
+  const url = m.click && app && m.click.startsWith(app) ? "./" + m.click.slice(app.length) : "./";
+  const r = await fetch(api.replace(/\/+$/, "") + "/api/notify", { method: "POST", headers: { "Content-Type": "application/json", "X-Brain-Secret": secret, "User-Agent": UA }, body: JSON.stringify({ title: m.title, body: m.message, tag: m.key, url }) });
+  if (!r.ok) throw new Error("nuvem HTTP " + r.status);
+  return (await r.json()).enviados || 0;
+}
 
 // ------------------------------------------------------------------ Focus (Banco Central), Tesouro Direto (Tesouro Transparente) e FIIs (informe mensal da CVM)
 async function focus() {
@@ -428,9 +438,12 @@ async function main() {
   for (const m of todo) {
     if (sent >= 3) break;
     if (quiet && !m.urgent) continue;
-    if (!topic || process.env.NO_NOTIFY === "1") { log("[sem envio]", m.title, "-", m.message); continue; }
+    const viaNuvem = !!(process.env.UIRACU_API && process.env.BRAIN_SECRET);
+    if ((!topic && !viaNuvem) || process.env.NO_NOTIFY === "1") { log("[sem envio]", m.title, "-", m.message); continue; }
     try {
-      for (const t of topics) { try { await ntfy(t + (m.sfx || ""), { title: m.title, message: m.message, priority: m.priority, tags: m.tags, click: m.click }); } catch (e) { log("ntfy falhou para um tópico:", e.message); } }
+      let entregues = 0;
+      if (viaNuvem) { try { entregues = await pushNuvem(m, app); } catch (e) { log("nuvem falhou:", e.message); } }
+      if (!entregues) for (const t of topics) { try { await ntfy(t + (m.sfx || ""), { title: m.title, message: m.message, priority: m.priority, tags: m.tags, click: m.click }); } catch (e) { log("ntfy falhou para um tópico:", e.message); } }
       state.notified[m.key] = new Date().toISOString();
       sent++;
       log("enviado:", m.title);
@@ -449,7 +462,7 @@ async function main() {
         headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({
           model: process.env.CLAUDE_MODEL || "claude-haiku-4-5", max_tokens: 500,
-          messages: [{ role: "user", content: `Você é o Alfred, mordomo discreto de um investidor brasileiro de perfil seguro e longo prazo. Com os dados abaixo, escreva em português, em 5 linhas curtas, o resumo do dia, o que mudou e uma cautela. Não dê ordem de compra ou venda e não invente números.\n${ctxTxt}` }],
+          messages: [{ role: "user", content: `Você é o Uiraçu, vigia discreto de um investidor brasileiro de perfil seguro e longo prazo. Com os dados abaixo, escreva em português, em 5 linhas curtas, o resumo do dia, o que mudou e uma cautela. Não dê ordem de compra ou venda e não invente números.\n${ctxTxt}` }],
         }),
       });
       const j = await r.json();

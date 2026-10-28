@@ -1,13 +1,13 @@
 {
-  "name": "VW Wallet Investments",
-  "short_name": "VW Wallet",
+  "name": "Uiraçu",
+  "short_name": "Uiraçu",
   "description": "Vigia o mercado 24 horas e avisa de boas ofertas para um investidor seguro e de longo prazo.",
   "lang": "pt-BR",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#F4F4F2",
-  "theme_color": "#F5C400",
+  "theme_color": "#F2A900",
   "icons": [
     {
       "src": "icons/icon-192.png",

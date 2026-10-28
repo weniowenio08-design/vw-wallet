@@ -1,7 +1,8 @@
-// VW Wallet Investments: app minimalista. Dados vêm de data/*.json (gerados pelo cérebro na nuvem).
+// Uiraçu: app minimalista. Dados vêm de data/*.json (gerados pelo cérebro na nuvem).
 // Tudo que o usuário digita (patrimônio, metas, favoritos, alertas) fica SÓ neste aparelho (localStorage).
 import { makeExtras } from "./extras.js";
 import { makeDados } from "./dados.js";
+import { makeGastos } from "./gastos.js";
 const $ = (s, el = document) => el.querySelector(s);
 const store = {
   get(k, d) { try { const v = JSON.parse(localStorage.getItem("vw:" + k)); return v ?? d; } catch { return d; } },
@@ -50,6 +51,7 @@ const IC = {
   book: "M5 5h6a2 2 0 012 2v12a2 2 0 00-2-2H5zM19 5h-6a2 2 0 00-2 2v12a2 2 0 012-2h6z",
   shield: "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z",
   down: "M7 5v12M3 13l4 4 4-4M17 19V7M13 11l4-4 4 4",
+  receipt: "M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3",
 };
 const ic = (n, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
 const icFill = (n) => `<svg class="ic fill" viewBox="0 0 24 24" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
@@ -58,7 +60,7 @@ const CLS = [["selic", "Tesouro Selic"], ["ipca", "Tesouro IPCA+"], ["cdb", "CDB
 const DEF_T = { selic: 45, ipca: 26, cdb: 0, fii: 12, acao: 7, ext: 10 };
 const RISK = ["fii", "acao", "ext"];
 const REGIME = {
-  estresse: { t: "Mercado em estresse", p: "Estresse", d: "As ofertas ficam em espera até o mercado estabilizar: o Alfred prefere perder uma oportunidade a comprar uma faca caindo." },
+  estresse: { t: "Mercado em estresse", p: "Estresse", d: "As ofertas ficam em espera até o mercado estabilizar: o Uiraçu prefere perder uma oportunidade a comprar uma faca caindo." },
   tensao: { t: "Mercado tenso", p: "Tenso", d: "Cautela: só ofertas fortes e em parcelas pequenas." },
   calmo: { t: "Mercado calmo", p: "Calmo", d: "Sem estresse: ofertas de qualidade podem ser avaliadas." },
 };
@@ -220,15 +222,15 @@ const GLOSS = {
   "Circuit breaker": ["Circuit breaker", "Parada automática da bolsa quando o Ibovespa cai 10% no dia, para o mercado respirar. Aconteceu em 26/10/2026, pela primeira vez desde 2020."],
   "Fiscal": ["Contas públicas (fiscal)", "Diz respeito às contas do governo: quanto gasta, quanto arrecada e quanto deve. Se o mercado desconfia dessas contas, os juros e o dólar sobem."],
   "B3": ["Brasil, Bolsa, Balcão", "A bolsa de valores do Brasil, onde se compram e vendem ações, FIIs e ETFs."],
-  "ntfy": ["ntfy", "Aplicativo gratuito de avisos. O VW Wallet usa o ntfy para mandar a notificação ao seu celular mesmo com o app fechado."],
-  "Suitability": ["Perfil de investidor (suitability)", "Questionário que as corretoras fazem para saber quanto risco você aceita e por quanto tempo. O VW Wallet usa um parecido para sugerir sua carteira."],
-  "Oferta": ["Oferta (sinal do Alfred)", "Ativo de qualidade que caiu bastante e, pelas regras do Alfred, está num preço atraente para quem pensa no longo prazo. Não é ordem de compra."],
-  "Em espera": ["Em espera (sinal do Alfred)", "Parece uma boa oferta, mas o mercado está em estresse. O Alfred prefere esperar acalmar a comprar enquanto tudo cai."],
-  "Esticada": ["Esticada (sinal do Alfred)", "O preço subiu rápido demais e está bem acima da média. Quem já tem pode pensar em realizar parte do lucro."],
+  "ntfy": ["ntfy", "Aplicativo gratuito de avisos. O Uiraçu usa o ntfy para mandar a notificação ao seu celular mesmo com o app fechado."],
+  "Suitability": ["Perfil de investidor (suitability)", "Questionário que as corretoras fazem para saber quanto risco você aceita e por quanto tempo. O Uiraçu usa um parecido para sugerir sua carteira."],
+  "Oferta": ["Oferta (sinal do Uiraçu)", "Ativo de qualidade que caiu bastante e, pelas regras do Uiraçu, está num preço atraente para quem pensa no longo prazo. Não é ordem de compra."],
+  "Em espera": ["Em espera (sinal do Uiraçu)", "Parece uma boa oferta, mas o mercado está em estresse. O Uiraçu prefere esperar acalmar a comprar enquanto tudo cai."],
+  "Esticada": ["Esticada (sinal do Uiraçu)", "O preço subiu rápido demais e está bem acima da média. Quem já tem pode pensar em realizar parte do lucro."],
   "Focus": ["Boletim Focus", "Pesquisa semanal do Banco Central com as previsões de economistas e bancos para Selic, inflação, PIB e dólar. Mostra o que o mercado espera, não o que vai acontecer."],
   "Teste de estresse": ["Teste de estresse", "Simulação de como a sua carteira se comportaria numa queda forte do mercado, para ver se a perda caberia no seu limite."],
   "VP": ["Valor patrimonial por cota", "Quanto vale, no balanço, cada cota de um fundo imobiliário. Comparando com o preço de mercado, você descobre o P/VP."],
-  "Nota do Alfred": ["Nota do Alfred", "Pontuação de 0 a 100 que combina o tamanho da queda, o RSI, a tendência e a qualidade do ativo. Acima de 70 e em ativo de qualidade vira \"oferta\"."],
+  "Nota do Uiraçu": ["Nota do Uiraçu", "Pontuação de 0 a 100 que combina o tamanho da queda, o RSI, a tendência e a qualidade do ativo. Acima de 70 e em ativo de qualidade vira \"oferta\"."],
 };
 const GALIAS = { "FIIs": "FII", "ETFs": "ETF", "CDBs": "CDB", "LCIs": "LCI", "LCAs": "LCA", "Dividend Yield": "Dividend yield", "dividend yield": "Dividend yield", "dividendos": "Proventos", "Selic.": "Selic", "IPCA+": "Tesouro IPCA+", "volatilidade": "Volatilidade", "renda fixa": "Renda fixa", "renda variável": "Renda variável", "reserva de emergência": "Reserva de emergência", "liquidez": "Liquidez", "rebalancear": "Rebalancear", "marcação a mercado": "Marcação a mercado", "RSI baixo": "RSI", "Média 200 dias": "Média 200 dias" };
 const termKey = (t) => (GLOSS[t] ? t : GALIAS[t] || null);
@@ -291,7 +293,7 @@ function vHoje() {
   if (D.digest?.text) h += secTitle("Resumo do dia") + `<div class="card" style="line-height:1.5;font-size:14.5px">${esc(D.digest.text).replace(/\n/g, "<br>")}</div>`;
   const fl = D.assets.filter((a) => fav.has(a.sym));
   if (fl.length) h += secTitle("Favoritos") + `<div class="card">${fl.map((a) => row(a)).join("")}</div>`;
-  h += secTitle("Ofertas agora") + `<div class="card">${s.offers.length ? s.offers.map((a) => row(a, true)).join("") : `<div class="empty">Nenhuma oferta no momento. O Alfred segue vigiando e avisa no celular quando surgir uma que combine com o seu perfil (seguro, longo prazo).</div>`}</div>`;
+  h += secTitle("Ofertas agora") + `<div class="card">${s.offers.length ? s.offers.map((a) => row(a, true)).join("") : `<div class="empty">Nenhuma oferta no momento. O Uiraçu segue vigiando e avisa no celular quando surgir uma que combine com o seu perfil (seguro, longo prazo).</div>`}</div>`;
   if (s.waiting.length) h += secTitle("Em espera: boas, mas o mercado está agitado") + `<div class="card">${s.waiting.slice(0, 6).map((a) => row(a, true)).join("")}</div>`;
   if (s.stretched.length) h += secTitle("Esticadas: se você tem, considere realizar parte") + `<div class="card">${s.stretched.map((a) => row(a, true)).join("")}</div>`;
   const nx = AGENDA.filter(([d]) => d >= todayBRT()).slice(0, 5);
@@ -303,7 +305,7 @@ function vHoje() {
 
 // ------------------------------------------------------------------ MERCADO (altas/quedas + filtros e ordem, como nos apps de corretora)
 let mkTab = "altas", mkType = store.get("mkType", "todos"), mkSort = store.get("mkSort", "dia"), mkAll = false;
-const SORTS = { dia: ["Variação do dia", (a, b) => b.d1 - a.d1], nota: ["Nota do Alfred", (a, b) => b.score - a.score], queda: ["Maior queda da máxima", (a, b) => a.dd - b.dd], dy: ["Dividend yield 12m", (a, b) => (b.dy || 0) - (a.dy || 0)], pvp: ["P/VP mais baixo (FIIs)", (a, b) => (a.pvp ?? 99) - (b.pvp ?? 99)], rsi: ["RSI mais baixo", (a, b) => a.rsi - b.rsi] };
+const SORTS = { dia: ["Variação do dia", (a, b) => b.d1 - a.d1], nota: ["Nota do Uiraçu", (a, b) => b.score - a.score], queda: ["Maior queda da máxima", (a, b) => a.dd - b.dd], dy: ["Dividend yield 12m", (a, b) => (b.dy || 0) - (a.dy || 0)], pvp: ["P/VP mais baixo (FIIs)", (a, b) => (a.pvp ?? 99) - (b.pvp ?? 99)], rsi: ["RSI mais baixo", (a, b) => a.rsi - b.rsi] };
 const typeOk = (a) => mkType === "todos" || (mkType === "fav" ? favs().has(a.sym) : a.type === mkType);
 function vMercado() {
   const s = D.summary, c = s.context, pool = D.assets.filter(typeOk);
@@ -329,7 +331,7 @@ function vNoticias() {
   const f = { todas: () => true, br: (n) => n.cat !== "mundo", mundo: (n) => n.cat === "mundo", minhas: (n) => (n.syms || []).some((s) => mine.has(s)), importantes: (n) => n.key };
   const items = D.news.items.filter(f[nwTab]), m = D.news.mood, mood = m > 0.15 ? "positivo" : m < -0.15 ? "negativo" : "neutro";
   return secTitle(`Notícias · clima ${mood}`) + `<div class="fchips">${[["todas", "Todas"], ["br", "Brasil"], ["importantes", "Importantes"], ["minhas", "Meus ativos"], ["mundo", "Mundo"]].map(([k, t]) => `<button data-nw="${k}" class="${nwTab === k ? "on" : ""}">${t}</button>`).join("")}</div>
-  <div class="card news">${newsList(items.slice(0, 60))}</div><p class="warn">O VW Wallet lê as principais fontes brasileiras (InfoMoney, Money Times, Exame, G1, Folha, Estadão, Agência Brasil e outras) e o noticiário internacional, várias vezes ao dia, mesmo com o app fechado.</p>`;
+  <div class="card news">${newsList(items.slice(0, 60))}</div><p class="warn">O Uiraçu lê as principais fontes brasileiras (InfoMoney, Money Times, Exame, G1, Folha, Estadão, Agência Brasil e outras) e o noticiário internacional, várias vezes ao dia, mesmo com o app fechado.</p>`;
 }
 const assetNews = (it) => { return it?.length ? secTitle("Notícias desta empresa") + `<div class="card news">${newsList(it.slice(0, 5).map((x) => ({ ...x, cat: "br", syms: [] })))}</div>` : ""; };
 
@@ -350,9 +352,9 @@ async function vAtivo(sym) {
   <svg class="chart" id="chart" viewBox="0 0 360 230" preserveAspectRatio="none"></svg>
   <div class="seg" style="margin-top:10px">${RANGES.map(([n, t]) => `<button data-range="${n}" class="${range === n ? "on" : ""}" style="padding:8px 2px;font-size:12.5px">${t}</button>`).join("")}</div>
   <div id="al-panel" style="display:none"><div class="grid2"><div><label>Avisar quando o preço ficar</label><select id="al-dir"><option value="abaixo">abaixo de</option><option value="acima">acima de</option></select></div><div><label>Preço (R$)</label><input id="al-price" inputmode="decimal" placeholder="${fN(a.p)}"></div></div><button class="btn" id="al-save">Criar alerta</button>${al.length ? `<div style="margin-top:12px">${al.map((x) => `<div class="cv" style="padding:6px 0"><span class="${x.done ? "mut" : ""}">${x.dir} de R$ ${fN(x.price)}${x.done ? " (disparado)" : ""}</span><button class="btn sm ghost" data-delal="${x.id}">${ic("trash", "sm")}</button></div>`).join("")}</div>` : ""}<div class="mut" style="font-size:12px;margin-top:8px;line-height:1.5">O alerta confere o preço sempre que o app atualiza. Para avisos com o app fechado, assine as ofertas no ntfy (aba Mais).</div></div></div>
-  ${secTitle("Leitura do Alfred")}<div class="card"><div style="font-weight:700;margin-bottom:6px">${lbl}</div>${a.why?.length ? `<div class="chips">${a.why.map((w) => `<span class="chip">${esc(w)}</span>`).join("")}</div>` : ""}${a.label === "aguardar" ? `<div class="empty" style="margin-top:10px">${R.d}</div>` : ""}</div>
+  ${secTitle("Leitura do Uiraçu")}<div class="card"><div style="font-weight:700;margin-bottom:6px">${lbl}</div>${a.why?.length ? `<div class="chips">${a.why.map((w) => `<span class="chip">${esc(w)}</span>`).join("")}</div>` : ""}${a.label === "aguardar" ? `<div class="empty" style="margin-top:10px">${R.d}</div>` : ""}</div>
   ${secTitle("Números")}<div class="grid2">
-    ${[["Dividend yield 12m", a.dy ? fN(a.dy * 100, 1) + "%" : "—", ""], ["Queda da máxima (12m)", pct(a.dd), cl(a.dd)], ["RSI (14 dias)", fN(a.rsi, 0), ""], ["Volatilidade", fN((a.vol || 0) * 100, 0) + "% a.a.", ""], ["5 dias", pct(a.d5), cl(a.d5)], ["21 dias", pct(a.d21), cl(a.d21)], ["Máxima 12m", "R$ " + fN(a.hi), ""], ["Mínima 12m", "R$ " + fN(a.lo), ""], ["Média 200 dias", "R$ " + fN(a.s200), ""], ["Nota do Alfred", a.score + "/100", ""], ...(a.pvp != null ? [["P/VP (oficial, CVM)", fN(a.pvp, 2), a.pvp <= 1 ? "up" : ""], ["Valor patrimonial por cota", "R$ " + fN(a.vp), ""], ["DY do último mês", fN(a.dyMes, 2) + "%", ""], ["Cotistas", (a.cotistas || 0).toLocaleString("pt-BR"), ""]] : [])].map(([k, v, c]) => `<div class="stat"><small>${k}</small><b class="num ${c}">${v}</b></div>`).join("")}</div>
+    ${[["Dividend yield 12m", a.dy ? fN(a.dy * 100, 1) + "%" : "—", ""], ["Queda da máxima (12m)", pct(a.dd), cl(a.dd)], ["RSI (14 dias)", fN(a.rsi, 0), ""], ["Volatilidade", fN((a.vol || 0) * 100, 0) + "% a.a.", ""], ["5 dias", pct(a.d5), cl(a.d5)], ["21 dias", pct(a.d21), cl(a.d21)], ["Máxima 12m", "R$ " + fN(a.hi), ""], ["Mínima 12m", "R$ " + fN(a.lo), ""], ["Média 200 dias", "R$ " + fN(a.s200), ""], ["Nota do Uiraçu", a.score + "/100", ""], ...(a.pvp != null ? [["P/VP (oficial, CVM)", fN(a.pvp, 2), a.pvp <= 1 ? "up" : ""], ["Valor patrimonial por cota", "R$ " + fN(a.vp), ""], ["DY do último mês", fN(a.dyMes, 2) + "%", ""], ["Cotistas", (a.cotistas || 0).toLocaleString("pt-BR"), ""]] : [])].map(([k, v, c]) => `<div class="stat"><small>${k}</small><b class="num ${c}">${v}</b></div>`).join("")}</div>
   ${a.divs?.length ? secTitle("Últimos proventos") + `<div class="card">${a.divs.slice().reverse().map((d) => `<div class="cv" style="padding:7px 0;border-bottom:1px solid var(--line)"><span class="mut">${d.d.split("-").reverse().join("/")}</span><b class="num">R$ ${fN(d.a, 4)}</b></div>`).join("")}</div>` : ""}
   ${held.length ? secTitle("Na sua carteira") + `<div class="card">Você tem ${fBRL(held.reduce((s, p) => s + p.value, 0))} em ${a.sym}.</div>` : ""}
   ${assetNews(await assetNewsOf(a.sym))}
@@ -441,8 +443,8 @@ function boasOfertas(pool) {
   const now = good.filter((a) => a.label === "oferta"), wait = good.filter((a) => a.label === "aguardar"), obs = good.filter((a) => a.label === "observar");
   const meta = (a) => [a.pvp != null ? `P/VP ${fN(a.pvp, 2)}` : null, a.dy ? `DY ${fN(a.dy * 100, 1)}%` : null, `${fN(Math.abs(a.dd) * 100, 0)}% abaixo da máxima`, `RSI ${fN(a.rsi, 0)}`].filter(Boolean).join(" · ");
   const line = (a) => `<div class="row" data-go="#/ativo/${a.sym}">${logo(a.sym)}<div class="grow"><div class="tk">${a.sym}${BADGE[a.label] || ""}</div><div class="nm">${esc(a.name)}</div><div class="mut" style="font-size:12px;margin-top:3px">${esc(meta(a))}</div></div><div class="px num"><b>${fN(a.p)}</b><i class="${cl(a.d1)}">${pct(a.d1)}</i></div><span class="score">${a.score}</span></div>`;
-  let h = `<div class="card" style="font-size:13.5px;line-height:1.5">Empresas e fundos de qualidade que caíram o bastante para o preço ficar atraente. ${T ? "Filtrado pelas classes do seu perfil." : "Responda o perfil de investidor para filtrar pelo seu perfil."} O número à direita é a nota do Alfred (0 a 100).</div>`;
-  h += secTitle("Boa hora de comprar") + `<div class="card">${now.length ? now.map(line).join("") : `<div class="empty">${regime === "estresse" ? "Nenhuma agora: o mercado está em estresse e o Alfred prefere esperar. Veja as que estão em espera abaixo." : "Nenhuma agora. O Alfred avisa no celular quando surgir."}</div>`}</div>`;
+  let h = `<div class="card" style="font-size:13.5px;line-height:1.5">Empresas e fundos de qualidade que caíram o bastante para o preço ficar atraente. ${T ? "Filtrado pelas classes do seu perfil." : "Responda o perfil de investidor para filtrar pelo seu perfil."} O número à direita é a nota do Uiraçu (0 a 100).</div>`;
+  h += secTitle("Boa hora de comprar") + `<div class="card">${now.length ? now.map(line).join("") : `<div class="empty">${regime === "estresse" ? "Nenhuma agora: o mercado está em estresse e o Uiraçu prefere esperar. Veja as que estão em espera abaixo." : "Nenhuma agora. O Uiraçu avisa no celular quando surgir."}</div>`}</div>`;
   if (wait.length) h += secTitle("Boas, mas em espera") + `<div class="card"><div class="mut" style="font-size:13px;line-height:1.5;margin-bottom:4px">Passam nos critérios, mas o mercado está agitado. Entram na lista de compra quando acalmar.</div>${wait.map(line).join("")}</div>`;
   if (obs.length) h += secTitle("Para ficar de olho") + `<div class="card">${obs.slice(0, 6).map(line).join("")}</div>`;
   return h + `<p class="warn">Regras objetivas (queda da máxima, RSI, média de 200 dias, qualidade, P/VP dos FIIs). Material de estudo, não recomendação personalizada: confira preço e taxas na sua corretora.</p>`;
@@ -517,8 +519,8 @@ function vCarteira() {
   h += pieCard(pos, T, total);
   h += X.healthCard(pos) + X.incomeCard(pos);
   const qa = store.get("quiz", {}), qd = QUIZ.every((q) => qa[q.k]), pr = qd ? profileOf(qa) : null;
-  h += `<div class="card cta" data-go="#/perfil"><div class="cta-i">${ic("user")}</div><div style="flex:1"><div style="font-weight:800;font-size:15px">${pr ? `Perfil: ${pr.name}` : "Descubra o seu perfil de investidor"}</div><div class="mut" style="font-size:13px;margin-top:3px">${pr ? "Toque para ver a carteira sugerida ou refazer." : "9 perguntas rápidas e o Alfred monta a carteira ideal para você (ou para um amigo)."}</div></div><span class="badge">${pr ? "VER" : "COMEÇAR"}</span></div>`;
-  h += `<div class="card cta" data-go="#/recomendar"><div class="cta-i">${ic("target")}</div><div style="flex:1"><div style="font-weight:800;font-size:15px">O que comprar hoje?</div><div class="mut" style="font-size:13px;margin-top:3px">O Alfred monta a compra do mês de acordo com o seu perfil.</div></div><span class="badge">VER</span></div>`;
+  h += `<div class="card cta" data-go="#/perfil"><div class="cta-i">${ic("user")}</div><div style="flex:1"><div style="font-weight:800;font-size:15px">${pr ? `Perfil: ${pr.name}` : "Descubra o seu perfil de investidor"}</div><div class="mut" style="font-size:13px;margin-top:3px">${pr ? "Toque para ver a carteira sugerida ou refazer." : "9 perguntas rápidas e o Uiraçu monta a carteira ideal para você (ou para um amigo)."}</div></div><span class="badge">${pr ? "VER" : "COMEÇAR"}</span></div>`;
+  h += `<div class="card cta" data-go="#/recomendar"><div class="cta-i">${ic("target")}</div><div style="flex:1"><div style="font-weight:800;font-size:15px">O que comprar hoje?</div><div class="mut" style="font-size:13px;margin-top:3px">O Uiraçu monta a compra do mês de acordo com o seu perfil.</div></div><span class="badge">VER</span></div>`;
   h += secTitle("Como está distribuído", `<button class="btn sm ghost" id="meta-auto2" style="text-transform:none;letter-spacing:0">${ic("user", "sm")} Metas pelo perfil</button>`) + `<div class="card">${CLS.map(([k, n]) => { const cur = total ? (by[k] / total) * 100 : 0, tg = (T[k] / tsum) * 100; return `<div class="alloc"><div class="l"><span>${n}</span><span class="num"><b>${fN(cur, 0)}%</b> <span class="mut">/ meta ${fN(tg, 0)}%</span></span></div><div class="bar"><i style="width:${Math.min(100, cur)}%"></i><b style="left:${Math.min(99, tg)}%"></b></div></div>`; }).join("")}</div>`;
   if (all.length && usedPlats.length) { const bp = usedPlats.map((p) => [p, all.filter((x) => x.plat === p).reduce((s, x) => s + x.value, 0)]), tt = totals(all).total || 1; h += secTitle("Por plataforma") + `<div class="card">${bp.map(([p, v]) => `<div class="alloc"><div class="l"><span>${esc(p)}</span><span class="num"><b>${fBRL(v)}</b> <span class="mut">${fN((v / tt) * 100, 0)}%</span></span></div><div class="bar"><i style="width:${(v / tt) * 100}%"></i></div></div>`).join("")}</div>`; }
   const al = []; pos.forEach((p) => { const a = p.sym && asset(p.sym); if (!a) return; if (a.label === "esticada") al.push(`${a.sym}: preço esticado, considere realizar parte.`); if (a.label === "evitar") al.push(`${a.sym}: sinal de evitar, reavalie.`); if (total && p.value / total > 0.25) al.push(`${a.sym}: mais de 25% do patrimônio, concentração alta.`); });
@@ -579,11 +581,11 @@ function sinais(pos) {
   CLS.forEach(([k, n]) => { const cur = total ? (by[k] / total) * 100 : 0, tg = (T[k] / tsum) * 100; if (total > 0 && cur > tg + 5) out.push({ k: "atencao", sym: "", t: `${n}: ${fN(cur - tg, 0)} pontos acima da meta. Direcione o próximo aporte para outras classes.` }); });
   if (total > 0 && regime !== "estresse") {
     const done = new Set(); D.assets.filter((a) => a.core && a.label === "oferta").forEach((a) => { const k = a.type === "fii" ? "fii" : a.type === "acao" ? "acao" : "ext", cur = (by[k] / total) * 100, tg = (T[k] / tsum) * 100; if (cur < tg && done.size < 3) { done.add(a.sym); out.push({ k: "comprar", sym: a.sym, s: `R$ ${fN(a.p)} · ${fN(Math.abs(a.dd) * 100, 0)}% abaixo da máxima.`, t: `Oferta: ${a.why.slice(0, 2).join("; ")}. A classe está abaixo da meta (${fN(cur, 0)}% de ${fN(tg, 0)}%).` }); } });
-  } else if (total > 0) { const n = D.summary.waiting.length; if (n) out.push({ k: "espera", sym: "", t: `${n} ativos de qualidade estão em espera: o mercado está em estresse. O Alfred avisa quando acalmar.` }); }
+  } else if (total > 0) { const n = D.summary.waiting.length; if (n) out.push({ k: "espera", sym: "", t: `${n} ativos de qualidade estão em espera: o mercado está em estresse. O Uiraçu avisa quando acalmar.` }); }
   return out;
 }
 function sinaisCard(pos, compact) {
-  if (!pos.length) return compact ? "" : secTitle("Sinais da sua carteira") + `<div class="card"><div class="empty">Cadastre suas posições (com o preço pago) e o Alfred avisa a boa hora de comprar e de vender, de acordo com o seu perfil.</div></div>`;
+  if (!pos.length) return compact ? "" : secTitle("Sinais da sua carteira") + `<div class="card"><div class="empty">Cadastre suas posições (com o preço pago) e o Uiraçu avisa a boa hora de comprar e de vender, de acordo com o seu perfil.</div></div>`;
   const s = sinais(pos), tp = PROF_TP[profIdx()];
   if (!s.length) return compact ? "" : secTitle("Sinais da sua carteira") + `<div class="card"><div style="font-weight:700">Nenhum sinal agora.</div><div class="mut" style="font-size:13px;margin-top:4px;line-height:1.5">Sem lucro para realizar nem oferta nas classes abaixo da meta. Siga o plano e o aporte do mês.</div></div>`;
   const G = [["vender", "Hora de vender (parte)", "down"], ["comprar", "Hora de comprar", "up"], ["atencao", "Atenção", ""], ["espera", "Em espera", ""]];
@@ -623,9 +625,9 @@ function vRecomendar() {
   return back + secTitle("O que comprar hoje") + `<div class="card"><div style="font-weight:800;font-size:17px">Perfil ${esc(P.pr.name)}</div><div class="mut" style="font-size:13.5px;line-height:1.5;margin-top:4px">${esc(P.pr.desc)}</div><label>Quanto você vai investir neste mês (R$)</label><input id="rec-ap" inputmode="decimal" value="${P.ap}"></div>
   <div class="banner ${D.summary.regime.level}"><b>${R.t}</b><span>${esc(D.summary.regime.why)}. ${R.d}</span></div>
   ${secTitle("Comprar agora")}<div class="card">${P.now.length ? `<table><tr><th>Onde colocar</th><th class="r">Valor</th></tr>${P.now.map((x) => recLine(x)).join("")}<tr><td><b>Total</b></td><td class="r num"><b>${fBRL(tot)}</b></td></tr></table>` : '<div class="empty">Nada a comprar com este valor.</div>'}</div>
-  ${P.wait.length ? secTitle("Para comprar quando o mercado acalmar") + `<div class="card"><div class="mut" style="font-size:13px;line-height:1.5;margin-bottom:6px">Estes valores ficam no Tesouro Selic por enquanto. Quando a condição abaixo melhorar, o Alfred avisa e o dinheiro vai para:</div><table>${P.wait.map((x) => recLine(x, true)).join("")}</table></div>` : ""}
+  ${P.wait.length ? secTitle("Para comprar quando o mercado acalmar") + `<div class="card"><div class="mut" style="font-size:13px;line-height:1.5;margin-bottom:6px">Estes valores ficam no Tesouro Selic por enquanto. Quando a condição abaixo melhorar, o Uiraçu avisa e o dinheiro vai para:</div><table>${P.wait.map((x) => recLine(x, true)).join("")}</table></div>` : ""}
   <button class="btn" id="rec-reg">${ic("check", "sm")} Já comprei: registrar na minha carteira</button>
-  <p class="warn">Os códigos são os ativos de qualidade com melhor nota do Alfred hoje, nas classes do seu perfil. É material de estudo gerado por regras objetivas, não recomendação personalizada de investimento. Confira preço, taxas e prazos na sua corretora e só registre aqui o que você realmente comprou.</p>`;
+  <p class="warn">Os códigos são os ativos de qualidade com melhor nota do Uiraçu hoje, nas classes do seu perfil. É material de estudo gerado por regras objetivas, não recomendação personalizada de investimento. Confira preço, taxas e prazos na sua corretora e só registre aqui o que você realmente comprou.</p>`;
 }
 function bindRecomendar() {
   $("#rec-ap")?.addEventListener("change", (e) => { const v = num(e.target.value); if (v > 0) { setAporteMes(v); render(); } });
@@ -681,7 +683,7 @@ function profileOf(ans) {
   const eN = L("ext").includes("nao"), eP = L("ext").includes("pouco"), eS = L("ext").includes("sim");
   if (eN && !eP && !eS) mv("ext", idx <= 1 ? "selic" : "acao", al.ext); else if (eS && !eN) mv("selic", "ext", 3);
   if (L("prazo").includes(">10") && idx >= 2) why.push("Seu prazo é longo: ações e FIIs têm tempo de se recuperar de quedas.");
-  if (L("obj").includes("rapido")) why.push("Querer ganhar mais rápido significa aceitar mais oscilação. Não existe retorno alto sem risco e o Alfred não promete isso.");
+  if (L("obj").includes("rapido")) why.push("Querer ganhar mais rápido significa aceitar mais oscilação. Não existe retorno alto sem risco e o Uiraçu não promete isso.");
   if (semReserva) why.push("Primeiro passo: formar a reserva de emergência no Tesouro Selic ou em CDB de liquidez diária.");
   if (L("exp").includes("nenhuma")) why.push("Como você está começando, comece pela renda fixa e entre aos poucos nas demais classes.");
   if (Object.values(ans).some((v) => qList(v).length > 1)) why.push("Você marcou duas opções em algumas perguntas: o perfil considera a média delas e respeita o limite mais cauteloso.");
@@ -698,7 +700,7 @@ function vPerfil() {
     <div class="mut" style="font-size:12.5px;line-height:1.5">Exemplo com R$ 1.000: ${CLS.filter(([k]) => r.alloc[k] > 0).map(([k, n]) => `${n} ${fBRL(r.alloc[k] * 10)}`).join(" · ")}.</div></div>
     ${r.why.length ? secTitle("Por que assim") + `<div class="card">${r.why.map((w) => `<div style="padding:6px 0;line-height:1.45">• ${esc(w)}</div>`).join("")}</div>` : ""}
     <div class="card" style="margin-top:10px"><div class="cv"><div style="font-weight:700">${ic("check", "sm")} Metas da carteira geradas por este perfil</div></div><div class="mut" style="font-size:12.5px;margin-top:4px">Já aplicadas na aba Carteira. Se mudar, toque em “Gerar metas pelo meu perfil” na aba Mais.</div></div>
-    <div class="card cta" data-go="#/recomendar" style="margin-top:10px"><div class="cta-i">${ic("target")}</div><div style="flex:1"><div style="font-weight:800;font-size:15px">Quer que eu recomende o que comprar agora?</div><div class="mut" style="font-size:13px;margin-top:3px">O Alfred monta a compra do mês, com os ativos que valem a pena hoje para o seu perfil.</div></div><span class="badge">SIM</span></div>
+    <div class="card cta" data-go="#/recomendar" style="margin-top:10px"><div class="cta-i">${ic("target")}</div><div style="flex:1"><div style="font-weight:800;font-size:15px">Quer que eu recomende o que comprar agora?</div><div class="mut" style="font-size:13px;margin-top:3px">O Uiraçu monta a compra do mês, com os ativos que valem a pena hoje para o seu perfil.</div></div><span class="badge">SIM</span></div>
     <button class="btn ghost" id="q-share">${ic("share", "sm")} Compartilhar com um amigo</button><button class="btn ghost" id="q-redo">Refazer o questionário</button>
     <p class="warn">Questionário de perfil (suitability) simplificado, parecido com o das corretoras. É um ponto de partida para estudo e não substitui orientação de um profissional credenciado. As respostas ficam só neste aparelho.</p>`;
   }
@@ -725,7 +727,7 @@ function bindPerfil() {
   $("#q-prev")?.addEventListener("click", () => { const a = store.get("quiz", {}), last = [...QUIZ].reverse().find((q) => a[q.k]); if (last) delete a[last.k]; store.set("quiz", a); store.set("perfil", null); render(); });
   $("#q-redo")?.addEventListener("click", () => { store.set("quiz", {}); store.set("perfil", null); render(); });
   $("#q-share")?.addEventListener("click", async () => {
-    const r = profileOf(store.get("quiz", {})), text = `Meu perfil de investidor: ${r.name} (${r.score}/100).\nCarteira sugerida: ${CLS.filter(([k]) => r.alloc[k] > 0).map(([k, n]) => `${n} ${r.alloc[k]}%`).join(", ")}.\nFeito no VW Wallet Investments (material de estudo, não é recomendação).`;
+    const r = profileOf(store.get("quiz", {})), text = `Meu perfil de investidor: ${r.name} (${r.score}/100).\nCarteira sugerida: ${CLS.filter(([k]) => r.alloc[k] > 0).map(([k, n]) => `${n} ${r.alloc[k]}%`).join(", ")}.\nFeito no Uiraçu (material de estudo, não é recomendação).`;
     try { if (navigator.share) await navigator.share({ title: "Meu perfil de investidor", text, url: location.origin + location.pathname }); else { await navigator.clipboard.writeText(text + "\n" + location.origin + location.pathname); toast("Texto copiado."); } } catch {}
   });
 }
@@ -733,20 +735,20 @@ function bindPerfil() {
 // ------------------------------------------------------------------ MAIS
 function vMais() {
   const T = { ...DEF_T, ...store.get("metas", {}) }, b = D.backtest, topic = store.get("ntfy", ""), pl = myPlats();
-  let h = shareCard() + secTitle(`${ic("bell", "sm")} Notificações no celular`) + `<div class="card" style="line-height:1.55;font-size:14.5px">Para o VW Wallet avisar com o app fechado:<br>1. Instale o app <b>ntfy</b> (Play Store, F-Droid ou App Store).<br>2. Toque em <b>+</b> e assine o tópico secreto abaixo.<br>3. Nos Ajustes do Oppo, deixe o ntfy sem restrição de bateria e com início automático.<label>Seu tópico secreto</label><input id="ntfy" value="${esc(topic)}" placeholder="cole o tópico que o Alfred gerou"><div id="ntf-links"></div><button class="btn ghost" id="ntf-perm">Permitir avisos também aqui no app</button></div>`;
+  let h = shareCard() + secTitle(`${ic("bell", "sm")} Avisos do Uiraçu`) + `<div class="card" style="line-height:1.55;font-size:14.5px"><div id="push-box"><span class="mut">Verificando…</span></div></div>` + secTitle(`${ic("bell", "sm")} Plano B: avisos pelo ntfy`) + `<div class="card" style="line-height:1.55;font-size:14.5px">Se os avisos do próprio app não estiverem ligados, o Uiraçu ainda avisa pelo ntfy:<br>1. Instale o app <b>ntfy</b> (Play Store, F-Droid ou App Store).<br>2. Toque em <b>+</b> e assine o tópico secreto abaixo.<br>3. Nos Ajustes do Oppo, deixe o ntfy sem restrição de bateria e com início automático.<label>Seu tópico secreto</label><input id="ntfy" value="${esc(topic)}" placeholder="cole o tópico que o Uiraçu gerou"><div id="ntf-links"></div><button class="btn ghost" id="ntf-perm">Permitir avisos também aqui no app</button></div>`;
   h += secTitle(`${ic("wallet", "sm")} Minhas plataformas`) + `<div class="card"><div class="chips" id="pl-chips" style="margin:0 0 10px">${pl.map((p) => `<span class="chip on">${esc(p)} <button data-rmpl="${esc(p)}" aria-label="Remover" style="border:0;background:none;color:inherit;font-weight:800;cursor:pointer">×</button></span>`).join("") || '<span class="mut">Nenhuma ainda.</span>'}</div><label>Adicionar plataforma (digite as primeiras letras)</label><div><input id="pl-in" placeholder="ex.: xp, nu, rico, revolut…" autocomplete="off"></div><div class="mut" style="font-size:12px;margin-top:8px;line-height:1.5">O app mostra, para cada classe, em quais das suas plataformas dá para comprar. Confirme no app de cada uma: as ofertas mudam.</div></div>`;
   h += secTitle(`${ic("target", "sm")} Metas da carteira (%)`) + `<div class="card"><button class="btn" id="meta-auto" style="margin-top:0">${ic("user", "sm")} Gerar metas pelo meu perfil</button><div class="mut" style="font-size:12px;margin-top:6px">Ou ajuste à mão (a soma vira 100%):</div><div class="grid2">${CLS.map(([k, n]) => `<div><label>${n}</label><input data-meta="${k}" inputmode="decimal" value="${T[k]}"></div>`).join("")}</div><button class="btn ghost" id="meta-save">Salvar metas</button></div>`;
   h += secTitle(`${ic("book", "sm")} O que o histórico mostra`) + `<div class="card" style="font-size:14.5px;line-height:1.55">`;
   if (b) { const p1 = (x) => (x == null ? "—" : fN(x * 100, 1) + "%"); h += `Regra: <i>${esc(b.rule)}</i>.<table style="margin-top:10px"><tr><th></th><th class="r">Com sinal</th><th class="r">Qualquer dia</th></tr><tr><td>6 meses depois (média)</td><td class="r num"><b>${p1(b.h6.avg)}</b></td><td class="r num">${p1(b.h6.base_avg)}</td></tr><tr><td>12 meses depois (média)</td><td class="r num"><b>${p1(b.h12.avg)}</b></td><td class="r num">${p1(b.h12.base_avg)}</td></tr><tr><td>Acerto em 12 meses</td><td class="r num"><b>${p1(b.h12.hit)}</b></td><td class="r"></td></tr></table><div class="mut" style="font-size:12.5px;margin-top:10px">${b.tickers} ativos de qualidade, 10 anos, preços ajustados por dividendos. A vantagem é pequena (2 a 3 pontos) e há viés: só entram ativos que sobreviveram, e sinais próximos se sobrepõem. O CDI não foi descontado. É um estudo, não uma promessa.</div>`; } else h += `<span class="mut">Estudo ainda não gerado.</span>`;
-  h += `</div>` + secTitle(`${ic("shield", "sm")} Como o Alfred decide`) + `<div class="card" style="font-size:14.5px;line-height:1.6"><b>Oferta</b>: ativo de qualidade, 15% ou mais abaixo da máxima de 12 meses (FIIs, 8%), RSI baixo e sem tendência desastrosa.<br><b>Em espera</b>: boa oferta, mas o Ibovespa caiu forte: ele espera o mercado acalmar.<br><b>Esticada</b>: RSI alto e muito acima da média de 200 dias: pense em realizar parte.<br><b>Evitar</b>: queda enorme em ativo fora da lista de qualidade.<br>Ele só avisa no celular de ofertas fortes, no máximo 3 por vez, e não à noite.</div>`;
+  h += `</div>` + secTitle(`${ic("shield", "sm")} Como o Uiraçu decide`) + `<div class="card" style="font-size:14.5px;line-height:1.6"><b>Oferta</b>: ativo de qualidade, 15% ou mais abaixo da máxima de 12 meses (FIIs, 8%), RSI baixo e sem tendência desastrosa.<br><b>Em espera</b>: boa oferta, mas o Ibovespa caiu forte: ele espera o mercado acalmar.<br><b>Esticada</b>: RSI alto e muito acima da média de 200 dias: pense em realizar parte.<br><b>Evitar</b>: queda enorme em ativo fora da lista de qualidade.<br>Ele só avisa no celular de ofertas fortes, no máximo 3 por vez, e não à noite.</div>`;
   h += X.maisExtras();
   h += secTitle(`${ic("book", "sm")} Dicionário do investidor`) + `<div class="card"><input id="dic-q" placeholder="Buscar: CDB, Selic, FII, RSI…" autocomplete="off"><div id="dic-list" style="margin-top:8px">${vDicionario()}</div></div>`;
   h += secTitle(`${ic("shield", "sm")} Meus dados e backup`) + dados.dadosCard();
-  h += `<div class="about"><img src="icons/logo.svg" alt="" width="44" height="44"><div><b>VW Wallet Investments</b><div class="mut" style="font-size:12px">Versão 1.5 · material de estudo, gratuito</div></div></div><p class="warn">O Alfred é uma ferramenta de estudo. Não é recomendação personalizada nem substitui um profissional credenciado. Preços e dividendos vêm de fontes públicas com atraso e podem ter erros. Regras de imposto podem mudar. A decisão é sempre sua.</p>`;
+  h += `<div class="about"><img src="icons/logo.svg" alt="" width="44" height="44"><div><b>Uiraçu</b><div class="mut" style="font-size:12px">Versão 2.0 · material de estudo, gratuito</div></div></div><p class="warn">O Uiraçu é uma ferramenta de estudo. Não é recomendação personalizada nem substitui um profissional credenciado. Preços e dividendos vêm de fontes públicas com atraso e podem ter erros. Regras de imposto podem mudar. A decisão é sempre sua.</p>`;
   return h;
 }
 function bindMais() {
-  X.bindMaisExtras(render); bindShare();
+  X.bindMaisExtras(render); bindShare(); G.pushBox($("#push-box"), render);
   $("#ntfy")?.addEventListener("change", (e) => store.set("ntfy", e.target.value.trim()));
   $("#dic-q")?.addEventListener("input", (e) => { $("#dic-list").innerHTML = vDicionario(e.target.value); });
   $("#dic-list")?.addEventListener("click", (e) => { if (e.target.id === "dic-more") $("#dic-list").innerHTML = vDicionario("", true); });
@@ -768,7 +770,7 @@ function renderSearch() {
   let list = D.assets.filter((a) => (sType === "todos" || (sType === "fav" ? fav.has(a.sym) : a.type === sType)) && (!q || nrm(a.sym).includes(q) || nrm(a.name).includes(q) || nrm(a.sector).includes(q)));
   list.sort((a, b) => { const sa = nrm(a.sym).startsWith(q) ? 0 : nrm(a.name).startsWith(q) ? 1 : 2, sb = nrm(b.sym).startsWith(q) ? 0 : nrm(b.name).startsWith(q) ? 1 : 2; return sa - sb || b.score - a.score; });
   const recent = store.get("recent", []).map(asset).filter(Boolean);
-  $("#s-res").innerHTML = (!q && sType === "todos" && recent.length ? `<h2 style="margin-top:6px"><span>Buscados recentemente</span></h2><div class="card">${recent.slice(0, 4).map((a) => row(a)).join("")}</div><h2><span>Todos</span></h2>` : "") + `<div class="card">${list.slice(0, 40).map((a) => row(a)).join("") || '<div class="empty">Nenhum ativo encontrado. O Alfred vigia ações, FIIs e ETFs de qualidade da B3.</div>'}</div>`;
+  $("#s-res").innerHTML = (!q && sType === "todos" && recent.length ? `<h2 style="margin-top:6px"><span>Buscados recentemente</span></h2><div class="card">${recent.slice(0, 4).map((a) => row(a)).join("")}</div><h2><span>Todos</span></h2>` : "") + `<div class="card">${list.slice(0, 40).map((a) => row(a)).join("") || '<div class="empty">Nenhum ativo encontrado. O Uiraçu vigia ações, FIIs e ETFs de qualidade da B3.</div>'}</div>`;
   hydrate($("#s-res"));
 }
 
@@ -789,7 +791,7 @@ function bindInstall() { $("#inst-go")?.addEventListener("click", async () => { 
 const hasData = () => store.get("posicoes", []).length || Object.keys(store.get("quiz", {})).length || store.get("metas", null);
 function welcomeCard() {
   if (store.get("welcomed", false) || hasData()) return "";
-  return `<div class="card welcome"><h3>Bem-vindo ao VW Wallet</h3><div style="font-size:14.5px;line-height:1.5">Acompanha o mercado todos os dias e mostra a hora de comprar e de vender, de acordo com o seu perfil de investidor. <b>Gratuito e sem cadastro: seus dados ficam só neste celular.</b></div>
+  return `<div class="card welcome"><h3>Bem-vindo ao Uiraçu</h3><div style="font-size:14.5px;line-height:1.5">Acompanha o mercado todos os dias e mostra a hora de comprar e de vender, de acordo com o seu perfil de investidor. <b>Gratuito e sem cadastro: seus dados ficam só neste celular.</b></div>
   <div style="margin-top:8px"><div class="stepn"><b class="n">1</b><span>Responda 9 perguntas rápidas: o app monta a sua carteira ideal.</span></div><div class="stepn"><b class="n">2</b><span>Veja o que comprar hoje e quanto aplicar.</span></div><div class="stepn"><b class="n">3</b><span>Cadastre o que você já tem e receba os sinais de venda.</span></div></div>
   <label>Quanto você pretende investir por mês? (R$, opcional)</label><input id="w-ap" inputmode="decimal" placeholder="ex.: 500">
   <div id="inst-box" style="margin-top:12px">${installHTML()}</div>
@@ -817,8 +819,8 @@ function bindShare() {
   bindInstall(); ntfLinks();
   $("#ntfy")?.addEventListener("change", ntfLinks);
   $("#sh-app")?.addEventListener("click", async () => {
-    const url = APP_URL(), text = "Conheça o VW Wallet: acompanha o mercado e mostra a hora de comprar e de vender, de acordo com o seu perfil. Gratuito, sem cadastro; seus dados ficam só no seu celular.";
-    try { if (navigator.share) await navigator.share({ title: "VW Wallet Investments", text, url }); else { await navigator.clipboard.writeText(text + "\n" + url); toast("Texto e link copiados."); } } catch {}
+    const url = APP_URL(), text = "Conheça o Uiraçu: acompanha o mercado e mostra a hora de comprar e de vender, de acordo com o seu perfil. Gratuito, sem cadastro; seus dados ficam só no seu celular.";
+    try { if (navigator.share) await navigator.share({ title: "Uiraçu", text, url }); else { await navigator.clipboard.writeText(text + "\n" + url); toast("Texto e link copiados."); } } catch {}
   });
   document.querySelectorAll("[data-zoom]").forEach((b) => b.addEventListener("click", () => { store.set("zoom", +b.dataset.zoom); applyZoom(); document.querySelectorAll("[data-zoom]").forEach((x) => x.classList.toggle("on", x === b)); }));
 }
@@ -837,7 +839,7 @@ async function render() {
   const view = $("#view"), hash = location.hash || "#/hoje", [, route, arg] = hash.split("/");
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (route === "ativo" || route === "indice" ? "hoje" : route === "perfil" || route === "recomendar" ? "carteira" : route === "ferramentas" || route === "aprender" ? "mais" : route)));
   if (!D.summary) { view.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>'; return; }
-  const s = D.summary; $("#upd").textContent = `Investments · ${ago(s.updated)}`;
+  const s = D.summary; $("#upd").textContent = `olho de harpia · ${ago(s.updated)}`;
   const rg = $("#regime"); rg.className = "pill " + s.regime.level; rg.textContent = REGIME[s.regime.level].p;
   if (route === "ativo") {
     view.innerHTML = await vAtivo(arg); hydrate(view); drawChart(arg);
@@ -868,6 +870,7 @@ async function render() {
     view.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => { if (confirm("Excluir esta posição?")) { store.set("posicoes", store.get("posicoes", []).filter((p) => String(p.id) !== b.dataset.del)); render(); } })); }
   else if (route === "ferramentas") { view.innerHTML = X.vFerramentas(); X.bindFerramentas(); }
   else if (route === "aprender") { view.innerHTML = X.vAprender(); X.bindAprender(render); }
+  else if (route === "gastos") { view.innerHTML = G.vGastos(); G.bindGastos(render); }
   else if (route === "mais") { view.innerHTML = vMais(); bindMais(); }
   else { view.innerHTML = vHoje(); hydrate(view); X.bindHoje(render); dados.bindBanner(); bindWelcome(); }
   annotate(view);
@@ -877,13 +880,21 @@ async function render() {
 
 const X = makeExtras({ getD: () => D, aporteMes, store, esc, fN, fBRL, secTitle, ic, num, toast, CLS, CLS_COLOR, totals, todayBRT });
 const dados = makeDados({ store, toast, ic });
+const G = makeGastos({ store, esc, ic, secTitle, toast });
 let timer = null, lastRefresh = 0;
 const startTimer = () => { clearInterval(timer); timer = setInterval(refresh, 15 * 60 * 1000); };
 function boot() {
+  // abertura animada (uma vez por abertura do app; toque para pular; some sozinha em ~3 s)
+  const sp = $("#splash");
+  if (sp) {
+    let seen = false; try { seen = sessionStorage.getItem("vw:splash") === "1"; sessionStorage.setItem("vw:splash", "1"); } catch {}
+    const fim = () => { sp.classList.add("out"); setTimeout(() => sp.remove(), 700); };
+    if (seen) sp.remove(); else { sp.addEventListener("click", fim); setTimeout(fim, 3000); }
+  }
   migrate(); applyZoom(); readInvite(); X.initLock(); dados.persist();
   // logos que não existem somem sem precisar de código dentro do HTML (permite política de segurança estrita)
   document.addEventListener("error", (e) => { if (e.target?.tagName === "IMG" && e.target.closest?.(".logo")) e.target.remove(); }, true);
-  $("#tabs").innerHTML = [["hoje", "home", "Hoje"], ["mercado", "chart", "Mercado"], ["noticias", "news", "Notícias"], ["carteira", "wallet", "Carteira"], ["mais", "grid", "Mais"]].map(([k, i, t], n) => `<button data-tab="${k}" class="${n === 0 ? "on" : ""}">${ic(i)}<span>${t}</span><span class="pip"></span></button>`).join("");
+  $("#tabs").innerHTML = [["hoje", "home", "Hoje"], ["mercado", "chart", "Mercado"], ["noticias", "news", "Notícias"], ["carteira", "wallet", "Carteira"], ["gastos", "receipt", "Gastos"], ["mais", "grid", "Mais"]].map(([k, i, t], n) => `<button data-tab="${k}" class="${n === 0 ? "on" : ""}">${ic(i)}<span>${t}</span><span class="pip"></span></button>`).join("");
   $("#btn-search").innerHTML = ic("search");
   $("#s-back").innerHTML = ic("back");
   $("#sh-close").addEventListener("click", closeTerm); $("#sheet .bk").addEventListener("click", closeTerm);
@@ -901,6 +912,9 @@ function boot() {
   $("#brand").addEventListener("click", () => (location.hash = "#/hoje"));
   window.addEventListener("hashchange", () => { closeSearch(); closeTerm(); render(); });
   $("#upd").addEventListener("click", () => refresh(true));
+  // ao voltar para o app, puxa os gastos que o bot do WhatsApp anotou enquanto ele estava fechado
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") G.syncAgora().then((ok) => { if (ok && location.hash === "#/gastos" && document.activeElement?.tagName !== "INPUT") render(); }); });
+  G.syncAgora();
   if (navigator.serviceWorker) navigator.serviceWorker.register("sw.js").catch(() => {});
   restoreSnap(); render(); refresh(); startTimer();
   // economia de bateria: com o app em segundo plano não há consulta nenhuma; ao voltar, atualiza se os dados têm mais de 5 minutos
