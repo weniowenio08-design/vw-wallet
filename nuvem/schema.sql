@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS users (
   push TEXT NOT NULL DEFAULT '[]',          -- inscrições de aviso push (JSON)
   ai_day TEXT, ai_n INTEGER NOT NULL DEFAULT 0,
   weekly_on INTEGER NOT NULL DEFAULT 0,     -- resumo semanal (domingo, 18h de Brasília)
-  last_weekly TEXT                          -- data do último resumo enviado
+  last_weekly TEXT,                         -- data do último resumo enviado
+  tg TEXT,                                  -- id do usuário no Telegram (vínculo)
+  tg_chat TEXT                              -- chat privado do Telegram (onde o robô responde e escreve primeiro)
 );
 CREATE TABLE IF NOT EXISTS expenses (
   user TEXT NOT NULL, id TEXT NOT NULL,
@@ -30,3 +32,4 @@ CREATE INDEX IF NOT EXISTS ex_upd ON expenses(user, upd);
 CREATE INDEX IF NOT EXISTS ex_ts ON expenses(user, ts);
 CREATE TABLE IF NOT EXISTS links (code TEXT PRIMARY KEY, user TEXT NOT NULL, exp INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, t INTEGER NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tg ON users(tg) WHERE tg IS NOT NULL;

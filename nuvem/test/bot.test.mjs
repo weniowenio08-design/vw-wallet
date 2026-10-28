@@ -36,6 +36,10 @@ function instalaFetch() {
     if (url.startsWith("https://midia.test")) return new Response(new Uint8Array([1, 2, 3]));
     if (url.includes("generativelanguage.googleapis.com")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(gemini) }] } }] }), { status: 200 });
     if (url.startsWith("https://push.test")) { pushes.push(url); return new Response(null, { status: 201 }); }
+    if (url.startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array([4, 5, 6]));
+    if (url.includes("api.telegram.org") && url.endsWith("/sendMessage")) { const b = JSON.parse(init.body); saidas.push({ type: "text", tg: true, to: b.chat_id, text: { body: b.text } }); return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 }); }
+    if (url.includes("api.telegram.org") && url.endsWith("/sendDocument")) { const f = init.body.get("document"); saidas.push({ upload: f.name, tg: true, to: init.body.get("chat_id"), bytes: new Uint8Array(await f.arrayBuffer()) }); return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 }); }
+    if (url.includes("api.telegram.org") && url.endsWith("/getFile")) return new Response(JSON.stringify({ ok: true, result: { file_path: "voice/file_1.oga", file_size: 10 } }), { status: 200 });
     throw new Error("fetch inesperado: " + url);
   };
 }
@@ -60,7 +64,7 @@ async function vincula() {
   await zap(txt("vincular " + body.code));
 }
 test.beforeEach(() => {
-  env = { DB: novoDB(), WA_TOKEN: "tk", WA_PHONE_ID: "111", WA_APP_SECRET: "segredo", WA_VERIFY_TOKEN: "ver", WA_BOT_NUMBER: "+55 81 99999-0000", ALLOWED: WA, APP_ORIGIN: "https://app.test", MAX_USERS: "2", BRAIN_SECRET: "brain", VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_JWK: JSON.stringify(vapid.privateJwk), GEMINI_API_KEY: "g", AI_DAILY_LIMIT: "3", INVITE_CODE: "convite-teste" };
+  env = { DB: novoDB(), WA_TOKEN: "tk", WA_PHONE_ID: "111", WA_APP_SECRET: "segredo", WA_VERIFY_TOKEN: "ver", WA_BOT_NUMBER: "+55 81 99999-0000", ALLOWED: WA, TG_BOT_TOKEN: "tgtoken", TG_WEBHOOK_SECRET: "tgsegredo", TG_BOT_USERNAME: "UiracuBot", APP_ORIGIN: "https://app.test", MAX_USERS: "2", BRAIN_SECRET: "brain", VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_JWK: JSON.stringify(vapid.privateJwk), GEMINI_API_KEY: "g", AI_DAILY_LIMIT: "3", INVITE_CODE: "convite-teste" };
   saidas = []; pushes = []; gemini = { transcricao: "", itens: [] }; instalaFetch();
 });
 
@@ -193,4 +197,45 @@ test("resumo semanal: domingo 18h por WhatsApp (dentro da janela) e por aviso", 
   assert.match(ultima(), /Resumo da semana[\s\S]*Gastos: R\$\s250,00[\s\S]*150%/);
   assert.deepEqual(await agendados(env, dom), [], "não repete no mesmo domingo");
   assert.equal((await api("/api/status")).body.settings.weekly_on, 1);
+});
+
+// ---------------- Telegram
+let tseq = 0;
+async function tgz(msg, { de = 777, chat = 777, segredo = "tgsegredo" } = {}) {
+  const upd = { update_id: ++tseq, message: { message_id: tseq, from: { id: de }, chat: { id: chat, type: "private" }, ...msg } };
+  const ctx = ctxFn(); const r = await worker.fetch(new Request("https://w/tg", { method: "POST", headers: { "X-Telegram-Bot-Api-Secret-Token": segredo }, body: JSON.stringify(upd) }), env, ctx); await ctx.done(); return r.status;
+}
+async function vinculaTg() { await api("/api/sync", { since: 0, items: [] }); const { body } = await api("/api/register", {}); await tgz({ text: "/start " + body.code }); return body; }
+
+test("Telegram: webhook exige o segredo; vínculo por /start com código; estado dos canais", async () => {
+  assert.equal(await tgz({ text: "oi" }, { segredo: "errado" }), 401);
+  await api("/api/sync", { since: 0, items: [] });
+  const r = await api("/api/register", {}); assert.equal(r.body.tgBot, "UiracuBot"); assert.equal(r.body.canais.tg, true);
+  await tgz({ text: "/start 000000" }); assert.match(ultima(), /não vale mais/);
+  await tgz({ text: "/start " + r.body.code }); assert.match(ultima(), /Conectado/);
+  const s = (await api("/api/status")).body; assert.equal(s.linked, true); assert.equal(s.canal, "telegram"); assert.match(s.tg, /^Telegram ••/);
+  const n = saidas.length; await tgz({ text: "gastei 10 no mercado" }, { de: 999, chat: 999 }); assert.match(ultima(), /Ainda não conheço você/); assert.equal(saidas.length, n + 1);
+});
+
+test("Telegram: anota, comandos com barra, relatório e áudio", async () => {
+  await vinculaTg();
+  await tgz({ text: "gastei 45,90 no mercado" }); assert.match(ultima(), /45,90.*Mercado/s); assert.equal(saidas.at(-1).to, 777);
+  assert.match(saidas.at(-1).text.body, /<i>Errou\?/, "itálico vira HTML do Telegram");
+  await tgz({ text: "/resumo" }); assert.match(ultima(), /Gastos: R\$\s45,90/);
+  saidas.length = 0; await tgz({ text: "/relatorio@UiracuBot" });
+  const pdf = saidas.find((s) => s.upload); assert.match(pdf.upload, /\.pdf$/); assert.equal(new TextDecoder().decode(pdf.bytes.slice(0, 5)), "%PDF-");
+  gemini = { transcricao: "gastei trinta no almoço", itens: [{ tipo: "gasto", valor: 30, data: null, descricao: "Almoço", categoria: "alimentacao" }] };
+  await tgz({ voice: { file_id: "v1" } }); assert.ok(saidas.some((s) => /Entendi/.test(s.text?.body || "")));
+  assert.deepEqual(linhas("SELECT v FROM expenses ORDER BY upd").map((r) => r.v), [45.9, 30]);
+  await tgz({ text: "/ajuda" }); assert.match(ultima(), /Anote|comandos|Comandos/i);
+});
+
+test("Telegram: relatório automático chega sem janela de 24 h e sem modelo aprovado", async () => {
+  await vinculaTg(); await tgz({ text: "mercado 100" });
+  const agora = Date.now(), b = new Date(agora - 3 * 3600e3);
+  await api("/api/settings", { report_on: 1, report_day: b.getUTCDate(), report_hour: b.getUTCHours() });
+  env.DB.raw.prepare("UPDATE users SET last_inbound=?").run(agora - 90 * 3600e3); // última mensagem há 90 h
+  saidas.length = 0; const r = await agendados(env, agora);
+  assert.equal(r[0].modo, "janela"); assert.equal(saidas.filter((s) => s.upload).length, 2); assert.ok(saidas.every((s) => s.tg), "nada foi para o WhatsApp");
+  assert.equal(linhas("SELECT pending_report p FROM users")[0].p, null);
 });

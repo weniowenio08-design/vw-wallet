@@ -69,22 +69,30 @@ export function makeGastos(c) {
 
   function assessorCard() {
     const s = st.status, k = cfg();
-    if (st.cloud === false) return `<div class="card" style="font-size:14.5px;line-height:1.55">O robô do WhatsApp ainda não está ligado neste app. Quando estiver, esta área mostra o botão <b>Conectar ao WhatsApp</b>, e o que você mandar por texto, áudio ou foto da nota cai aqui.<div class="mut" style="font-size:12.5px;margin-top:8px">Enquanto isso, o app funciona normalmente: anote pelos campos acima.</div></div>`;
+    if (st.cloud === false) return `<div class="card" style="font-size:14.5px;line-height:1.55">O assessor de chat (Telegram e WhatsApp) ainda não está ligado neste app. Quando estiver, esta área mostra os botões de conectar, e o que você mandar por texto, áudio ou foto da nota cai aqui.<div class="mut" style="font-size:12.5px;margin-top:8px">Enquanto isso, o app funciona normalmente: anote pela barra de baixo.</div></div>`;
     if (st.cloud === null || !s) return `<div class="card"><span class="mut">Verificando a conexão…</span></div>`;
+    const can = s.canais || {}, tgOn = s.canal === "telegram";
     let h = `<div class="card" style="font-size:14.5px;line-height:1.55">`;
-    if (!s.linked) {
-      h += `Conecte seu WhatsApp ao Uiraçu. Depois é só mandar ao bot: <i>"gastei 45 no mercado"</i>, um <b>áudio</b> ou a <b>foto da nota fiscal</b>.`;
-      if (st.code) h += `<div class="stat" style="margin:12px 0"><small>Seu código (vale 15 minutos)</small><b class="num" style="font-size:24px;letter-spacing:.12em">${esc(st.code.code)}</b></div><a class="btn" target="_blank" rel="noopener" href="https://wa.me/${esc(st.code.bot)}?text=${encodeURIComponent("vincular " + st.code.code)}">Abrir o WhatsApp e enviar o código</a><div class="mut" style="font-size:12.5px;margin-top:8px">O texto já vem escrito. Só enviar.</div>`;
-      else h += `<button class="btn" id="g-link">Conectar ao WhatsApp</button>`;
+    if (!s.linked || st.code) {
+      if (!can.tg && !can.wa) h += `Nenhum canal de chat está ligado ainda no servidor. Assim que o Telegram ou o WhatsApp for ligado, os botões de conectar aparecem aqui.`;
+      else {
+        h += `Conecte um chat ao Uiraçu. Depois é só mandar ao bot: <i>"gastei 45 no mercado"</i>, um <b>áudio</b> ou a <b>foto da nota fiscal</b>.`;
+        if (st.code) {
+          const tg = st.code.canal === "tg", link = tg ? (st.code.tgBot ? `https://t.me/${st.code.tgBot}?start=${st.code.code}` : "") : `https://wa.me/${st.code.bot}?text=${encodeURIComponent("vincular " + st.code.code)}`;
+          h += `<div class="stat" style="margin:12px 0"><small>Seu código (vale 15 minutos)</small><b class="num" style="font-size:24px;letter-spacing:.12em">${esc(st.code.code)}</b></div>`;
+          h += link ? `<a class="btn" target="_blank" rel="noopener" href="${esc(link)}">Abrir o ${tg ? "Telegram" : "WhatsApp"} e enviar o código</a><div class="mut" style="font-size:12.5px;margin-top:8px">${tg ? "Toque em Iniciar no bot." : "O texto já vem escrito. Só enviar."}</div>` : `<div class="mut" style="font-size:13px">Abra o bot no Telegram e envie: <b>vincular ${esc(st.code.code)}</b></div>`;
+        } else h += (can.tg ? `<button class="btn" data-glink="tg">Conectar ao Telegram</button>` : "") + (can.wa ? `<button class="btn ${can.tg ? "ghost" : ""}" data-glink="wa">Conectar ao WhatsApp</button>` : "");
+      }
     } else {
-      h += `<div class="stat"><small>WhatsApp conectado</small><b class="num">${esc(s.wa || "")}</b></div>
+      h += `<div class="stat"><small>${tgOn ? "Telegram" : "WhatsApp"} conectado</small><b class="num">${esc((tgOn ? s.tg : s.wa) || "")}</b></div>
         <div class="mut" style="font-size:12.5px;margin:8px 0 2px">Mande ao bot: texto, áudio ou foto da nota. Comandos: <b>relatório</b>, <b>planilha</b>, <b>resumo</b>, <b>últimos</b>, <b>desfazer</b>, <b>ajuda</b>.</div>
         ${secTitle("Relatório automático")}<button class="btn opt ${k.on ? "sel" : ""}" id="gr-on"><span class="ck">${k.on ? "✓" : ""}</span>Enviar o relatório todo mês</button>
         <div class="grid2"><div><label>No dia</label><select id="gr-day">${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${k.day === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("")}</select></div><div><label>Às</label><select id="gr-hour">${Array.from({ length: 17 }, (_, i) => `<option value="${i + 6}" ${k.hour === i + 6 ? "selected" : ""}>${String(i + 6).padStart(2, "0")}h</option>`).join("")}</select></div></div>
-        <div class="mut" style="font-size:12.5px;margin-top:8px">Em meses mais curtos, vai no último dia. O WhatsApp só deixa o robô escrever primeiro com um modelo aprovado pela Meta; se ele ainda não estiver aprovado, você recebe um aviso aqui no celular e o PDF chega assim que você responder ao bot.</div>`;
+        <div class="mut" style="font-size:12.5px;margin-top:8px">Em meses mais curtos, vai no último dia. ${tgOn ? "No Telegram o robô escreve a qualquer hora, sem modelo de mensagem." : "O WhatsApp só deixa o robô escrever primeiro com um modelo aprovado pela Meta; se ele ainda não estiver aprovado, você recebe um aviso aqui no celular e o PDF chega assim que você responder ao bot."}</div>`;
+      if (can.tg && !tgOn || can.wa && tgOn) h += `<div style="margin-top:10px"><button class="btn ghost sm" data-glink="${tgOn ? "wa" : "tg"}">Conectar também ao ${tgOn ? "WhatsApp" : "Telegram"}</button></div>`;
     }
     const sem = !!st.status?.settings?.weekly_on;
-    h += `${secTitle("Resumo semanal")}<button class="btn opt ${sem ? "sel" : ""}" id="gw-on"><span class="ck">${sem ? "✓" : ""}</span>Todo domingo, às 18h</button><div class="mut" style="font-size:12.5px;margin-top:6px">Quanto você gastou na semana e as maiores categorias, por aviso no celular e, quando possível, por WhatsApp.</div>${secTitle("Avisos deste aplicativo")}<div style="font-size:14px;line-height:1.5">Avisos com o ícone do Uiraçu, sem instalar outro app.</div><button class="btn ghost" id="g-push">${N.pushOn() ? "Avisos ligados neste aparelho ✓" : "Ligar avisos neste aparelho"}</button>${N.pushOn() ? '<button class="btn ghost" id="g-push-test">Enviar um aviso de teste</button>' : ""}</div>`;
+    h += `${secTitle("Resumo semanal")}<button class="btn opt ${sem ? "sel" : ""}" id="gw-on"><span class="ck">${sem ? "✓" : ""}</span>Todo domingo, às 18h</button><div class="mut" style="font-size:12.5px;margin-top:6px">Quanto você gastou na semana e as maiores categorias, por aviso no celular e no chat.</div>${secTitle("Avisos deste aplicativo")}<div style="font-size:14px;line-height:1.5">Avisos com o ícone do Uiraçu, sem instalar outro app.</div><button class="btn ghost" id="g-push">${N.pushOn() ? "Avisos ligados neste aparelho ✓" : "Ligar avisos neste aparelho"}</button>${N.pushOn() ? '<button class="btn ghost" id="g-push-test">Enviar um aviso de teste</button>' : ""}</div>`;
     return h;
   }
 
@@ -142,8 +150,8 @@ export function makeGastos(c) {
     h += limiteCard(S);
     h += `<div class="mut" style="font-size:12.5px;line-height:1.5;margin:0 4px 6px">Escreva na barra de baixo, como falaria: "uber 23,50 ontem", "+1500 salário", "dia 12 farmácia 37".</div>` + secTitle(`${ic("plus", "sm")} Anotar com os campos`) + `<div class="card">${formCard()}</div>`;
     h += categoriasCard(L) + graficoCard(L) + metaCard(L, S) + fixosCard() + lancamentosCard(L, S);
-    h += secTitle(`${ic("down", "sm")} Relatório e planilha`) + `<div class="card"><button class="btn" id="g-pdf" style="margin-top:0">Relatório de ${esc(ymLabel(st.ym))} (PDF)</button><button class="btn ghost" id="g-csv">Planilha do mês (CSV, abre no Excel)</button><button class="btn ghost" id="g-csv-all">Planilha com tudo</button>${st.status?.linked ? '<button class="btn ghost" id="g-send">Enviar o relatório para o meu WhatsApp</button>' : ""}</div>`;
-    h += secTitle(`${ic("user", "sm")} Assessor no WhatsApp`) + assessorCard();
+    h += secTitle(`${ic("down", "sm")} Relatório e planilha`) + `<div class="card"><button class="btn" id="g-pdf" style="margin-top:0">Relatório de ${esc(ymLabel(st.ym))} (PDF)</button><button class="btn ghost" id="g-csv">Planilha do mês (CSV, abre no Excel)</button><button class="btn ghost" id="g-csv-all">Planilha com tudo</button>${st.status?.linked ? '<button class="btn ghost" id="g-send">Enviar o relatório para o meu chat</button>' : ""}</div>`;
+    h += secTitle(`${ic("user", "sm")} Assessor de gastos no chat`) + assessorCard();
     return h;
   }
 
@@ -191,8 +199,12 @@ export function makeGastos(c) {
     $("#g-pdf")?.addEventListener("click", () => entrega(new Blob([relatorioPdf(list(), st.ym)], { type: "application/pdf" }), `Uiracu-gastos-${st.ym}.pdf`));
     $("#g-csv")?.addEventListener("click", () => entrega(new Blob([toCsv(list().filter((x) => x.ts.startsWith(st.ym)))], { type: "text/csv;charset=utf-8" }), `Uiracu-gastos-${st.ym}.csv`));
     $("#g-csv-all")?.addEventListener("click", () => entrega(new Blob([toCsv(list())], { type: "text/csv;charset=utf-8" }), "Uiracu-gastos-tudo.csv"));
-    $("#g-send")?.addEventListener("click", async () => { try { const r = await N.enviarRelatorio(st.ym); toast(r.modo === "direto" ? "Enviei o PDF e a planilha no seu WhatsApp." : "Mande um “oi” ao bot no WhatsApp e o PDF chega na hora."); } catch (e) { toast("Não consegui pedir: " + e.message); } });
-    $("#g-link")?.addEventListener("click", async () => { try { st.code = await N.registrar(); render(); } catch (e) { toast("Não consegui gerar o código: " + e.message); } });
+    $("#g-send")?.addEventListener("click", async () => { try { const r = await N.enviarRelatorio(st.ym); toast(r.modo === "direto" ? "Enviei o PDF e a planilha no seu chat." : "Mande um “oi” ao bot no WhatsApp e o PDF chega na hora."); } catch (e) { toast("Não consegui pedir: " + e.message); } });
+    document.querySelectorAll("[data-glink]").forEach((b) => b.addEventListener("click", async () => { try { const ch = b.dataset.glink; st.code = { ...(await N.registrar()), canal: ch }; render();
+      const ate = Date.now() + 15 * 60e3, iv = setInterval(async () => {
+        if (Date.now() > ate || location.hash !== "#/gastos" || !st.code) return clearInterval(iv);
+        try { const s2 = await N.status(); if (ch === "tg" ? s2.tg : s2.wa) { clearInterval(iv); st.status = s2; st.code = null; toast("Conectado!"); render(); } } catch {}
+      }, 3000); } catch (e) { toast("Não consegui gerar o código: " + e.message); } }));
     $("#gr-on")?.addEventListener("click", async () => { const k = cfg(); k.on = !k.on; store.set("gastos_cfg", k); try { await N.ajustes({ report_on: k.on ? 1 : 0, report_day: k.day, report_hour: k.hour }); } catch (e) { toast("Não salvou na nuvem: " + e.message); } render(); });
     const saveWhen = async () => { const k = { ...cfg(), day: +$("#gr-day").value, hour: +$("#gr-hour").value }; store.set("gastos_cfg", k); try { await N.ajustes({ report_on: k.on ? 1 : 0, report_day: k.day, report_hour: k.hour }); toast("Combinado: dia " + k.day + ", " + String(k.hour).padStart(2, "0") + "h."); } catch (e) { toast("Não salvou na nuvem: " + e.message); } };
     $("#gr-day")?.addEventListener("change", saveWhen); $("#gr-hour")?.addEventListener("change", saveWhen);

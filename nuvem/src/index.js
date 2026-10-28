@@ -1,7 +1,7 @@
 // Uiraçu nuvem (Cloudflare Worker): webhook do WhatsApp, API do app (sincronização, vínculo, ajustes, push) e agendador.
 import { json, HttpError, corsHeaders, sha256hex, safeEq, randCode, maskWa, digits } from "./util.js";
 import { verifySignature, sendTemplate } from "./wa.js";
-import { onMessage, agendados, pushUser, enviarRelatorio, upsertStmt } from "./bot.js";
+import { onMessage, onTelegram, agendados, pushUser, enviarRelatorio, upsertStmt } from "./bot.js";
 import { subValida } from "./push.js";
 import { iaLigada } from "./ai.js";
 import { cleanItem } from "../../docs/gastos-core.js";
@@ -44,6 +44,16 @@ async function webhook(req, env, ctx, url) {
   return new Response("ok");
 }
 
+const canais = (env) => ({ wa: !!(env.WA_TOKEN && env.WA_PHONE_ID), tg: !!env.TG_BOT_TOKEN });
+
+async function telegram(req, env, ctx) {
+  const ok = req.method === "POST" && env.TG_WEBHOOK_SECRET && safeEq(req.headers.get("X-Telegram-Bot-Api-Secret-Token") || "", env.TG_WEBHOOK_SECRET);
+  if (!ok) return new Response("não autorizado", { status: 401 });
+  const upd = await req.json().catch(() => null);
+  if (upd) ctx.waitUntil(onTelegram(env, upd).catch((e) => console.log("falha no Telegram:", e && e.message)));
+  return new Response("ok");
+}
+
 async function api(req, env, ctx, url) {
   const p = url.pathname;
   if (p === "/api/notify" && req.method === "POST") { // o cérebro do mercado (GitHub Actions) avisa por aqui
@@ -58,14 +68,14 @@ async function api(req, env, ctx, url) {
   const user = await auth(req, env, criar);
 
   if (p === "/api/status") {
-    if (!user) return json({ linked: false, settings: null, push: 0, ia: iaLigada(env), now: Date.now() });
+    if (!user) return json({ linked: false, settings: null, push: 0, ia: iaLigada(env), canais: canais(env), now: Date.now() });
     let subs = []; try { subs = JSON.parse(user.push || "[]"); } catch {}
-    return json({ linked: !!user.wa, wa: maskWa(user.wa), settings: { report_on: user.report_on, report_day: user.report_day, report_hour: user.report_hour, weekly_on: user.weekly_on }, push: subs.length, ia: iaLigada(env), now: Date.now() });
+    return json({ linked: !!(user.wa || user.tg), canal: user.tg ? "telegram" : user.wa ? "whatsapp" : null, canais: canais(env), tg: user.tg ? "Telegram ••" + String(user.tg).slice(-3) : "", wa: maskWa(user.wa), settings: { report_on: user.report_on, report_day: user.report_day, report_hour: user.report_hour, weekly_on: user.weekly_on }, push: subs.length, ia: iaLigada(env), now: Date.now() });
   }
   if (p === "/api/register" && req.method === "POST") {
     const code = randCode();
     await env.DB.batch([env.DB.prepare("DELETE FROM links WHERE user=?").bind(user.id), env.DB.prepare("INSERT INTO links(code,user,exp) VALUES(?,?,?)").bind(code, user.id, Date.now() + 15 * 60e3)]);
-    return json({ code, bot: digits(env.WA_BOT_NUMBER), expira: 15 });
+    return json({ code, bot: digits(env.WA_BOT_NUMBER), tgBot: env.TG_BOT_USERNAME || "", canais: canais(env), expira: 15 });
   }
   if (p === "/api/sync" && req.method === "POST") {
     const now = Date.now(), b = await readJson(req), since = Math.max(0, +b.since || 0);
@@ -97,9 +107,9 @@ async function api(req, env, ctx, url) {
     return json({ ok: true, enviados: n });
   }
   if (p === "/api/report/send" && req.method === "POST") {
-    if (!user.wa) throw new HttpError(409, "conecte o WhatsApp primeiro");
+    if (!user.wa && !user.tg) throw new HttpError(409, "conecte o Telegram ou o WhatsApp primeiro");
     const b = await readJson(req); const ym = /^\d{4}-(0[1-9]|1[0-2])$/.test(b.ym || "") ? b.ym : new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 7);
-    if (user.last_inbound && Date.now() - user.last_inbound < 23 * 3600e3) { await enviarRelatorio(env, user, ym, { csv: true }); return json({ ok: true, modo: "direto" }); }
+    if (user.tg_chat || (user.last_inbound && Date.now() - user.last_inbound < 23 * 3600e3)) { await enviarRelatorio(env, user, ym, { csv: true }); return json({ ok: true, modo: "direto" }); }
     await env.DB.prepare("UPDATE users SET pending_report=? WHERE id=?").bind(ym, user.id).run();
     try { await sendTemplate(env, user.wa_raw || user.wa, env.WA_TEMPLATE_REPORT || "relatorio_mensal"); } catch {}
     return json({ ok: true, modo: "aguardando_resposta" });
@@ -113,6 +123,7 @@ export default {
     try {
       if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
       if (url.pathname === "/wa") return await webhook(req, env, ctx, url);
+      if (url.pathname === "/tg") return await telegram(req, env, ctx);
       if (url.pathname.startsWith("/api/")) {
         const r = await api(req, env, ctx, url), h = new Headers(r.headers);
         for (const [k, v] of Object.entries(cors)) h.set(k, v);

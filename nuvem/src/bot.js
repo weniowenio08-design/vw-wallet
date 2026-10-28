@@ -1,7 +1,15 @@
 // Cérebro do bot de gastos: entende mensagens do WhatsApp, anota no banco, responde e envia relatórios.
 import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, norm } from "../../docs/gastos-core.js";
 import { relatorioPdf } from "../../docs/relatorio.js";
-import { sendText, sendDocument, sendTemplate, downloadMedia } from "./wa.js";
+import * as WA from "./wa.js";
+import * as TG from "./tg.js";
+// "Endereço" de quem conversa: "tg:<chat>" é Telegram; qualquer outro valor é o número do WhatsApp. O resto do código não precisa saber a diferença.
+const via = (to) => (String(to).startsWith("tg:") ? TG : WA), idOf = (to) => String(to).replace(/^tg:/, "");
+const sendText = (env, to, body) => via(to).sendText(env, idOf(to), body);
+const sendDocument = (env, to, bytes, fn, mime, cap) => via(to).sendDocument(env, idOf(to), bytes, fn, mime, cap);
+const downloadMedia = (env, to, id) => via(to).downloadMedia(env, id);
+const sendTemplate = WA.sendTemplate;
+export const destino = (u) => (u.tg_chat ? "tg:" + u.tg_chat : u.wa_raw || u.wa);
 import { iaLigada, extrairMidia, extrairTexto } from "./ai.js";
 import { sendPush } from "./push.js";
 import { normWa } from "./util.js";
@@ -58,8 +66,8 @@ export function parseMes(n, hoje) {
 }
 
 // ------------------------------------------------------------------ relatórios
-export async function enviarRelatorio(env, user, ym, { csv = false, pdf = true } = {}) {
-  const to = user.wa_raw || user.wa, rows = await doMes(env, user.id, ym);
+export async function enviarRelatorio(env, user, ym, { csv = false, pdf = true, to: para } = {}) {
+  const to = para || destino(user), rows = await doMes(env, user.id, ym);
   if (pdf) await sendDocument(env, to, relatorioPdf(rows, ym, { geradoEm: new Date(Date.now() - BRT) }), `Uiracu-gastos-${ym}.pdf`, "application/pdf", `📄 Relatório de ${ymLabel(ym)}`);
   if (csv) await sendDocument(env, to, new TextEncoder().encode(toCsv(rows.filter((x) => x.ts.startsWith(ym)))), `Uiracu-gastos-${ym}.csv`, "text/csv", `📊 Planilha de ${ymLabel(ym)} (abre no Excel)`);
 }
@@ -83,49 +91,79 @@ async function usaIa(env, user) {
 }
 
 // ------------------------------------------------------------------ mensagens
-const permitidos = (env) => String(env.ALLOWED || "").split(",").map((s) => normWa(s)).filter(Boolean);
-const permitido = (env, wa) => permitidos(env).includes(wa);
+const lista = (s, f = (x) => x) => String(s || "").split(",").map((x) => f(x.trim())).filter(Boolean);
+const permitidos = (env) => lista(env.ALLOWED, normWa), permitidosTg = (env) => lista(env.ALLOWED_TG);
+const NOME = { wa: "WhatsApp", tg: "Telegram" };
 
-async function vincular(env, code, wa, from) {
-  const lista = permitidos(env); if (lista.length && !lista.includes(wa)) return;
-  // no máximo 5 tentativas de código por número a cada hora (impede adivinhar os 6 dígitos)
-  const falhas = (await env.DB.prepare("SELECT COUNT(*) AS n FROM seen WHERE id LIKE ? AND t>?").bind(`v:${wa}:%`, Date.now() - 3600e3).first()).n;
+/** Vincula o chat ao usuário do app pelo código de 6 dígitos (vale 15 min; 5 tentativas erradas por hora por pessoa). */
+async function vincular(env, code, canal, id, to) {
+  const ok = canal === "tg" ? permitidosTg(env) : permitidos(env); if (ok.length && !ok.includes(id)) return;
+  const chave = `v:${canal}${id}:`;
+  const falhas = (await env.DB.prepare("SELECT COUNT(*) AS n FROM seen WHERE id LIKE ? AND t>?").bind(chave + "%", Date.now() - 3600e3).first()).n;
   if (falhas >= 5) return;
   const l = await env.DB.prepare("SELECT user FROM links WHERE code=? AND exp>?").bind(code, Date.now()).first();
-  if (!l) await env.DB.prepare("INSERT OR IGNORE INTO seen(id,t) VALUES(?,?)").bind(`v:${wa}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, Date.now()).run();
-  if (!l) return sendText(env, from, "Esse código não vale mais. Abra o app, aba Gastos, e toque em *Conectar ao WhatsApp* para gerar outro.");
-  await env.DB.batch([
-    env.DB.prepare("UPDATE users SET wa=NULL, wa_raw=NULL WHERE wa=?").bind(wa),
-    env.DB.prepare("UPDATE users SET wa=?, wa_raw=?, last_inbound=? WHERE id=?").bind(wa, from, Date.now(), l.user),
-    env.DB.prepare("DELETE FROM links WHERE code=?").bind(code),
-  ]);
-  await sendText(env, from, "✅ Conectado ao Uiraçu!\n\n" + AJUDA);
+  if (!l) {
+    await env.DB.prepare("INSERT OR IGNORE INTO seen(id,t) VALUES(?,?)").bind(`${chave}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, Date.now()).run();
+    return sendText(env, to, `Esse código não vale mais. Abra o app, aba Gastos, e toque em *Conectar ao ${NOME[canal]}* para gerar outro.`);
+  }
+  const st = canal === "tg"
+    ? [env.DB.prepare("UPDATE users SET tg=NULL, tg_chat=NULL WHERE tg=?").bind(id), env.DB.prepare("UPDATE users SET tg=?, tg_chat=?, last_inbound=? WHERE id=?").bind(id, idOf(to), Date.now(), l.user)]
+    : [env.DB.prepare("UPDATE users SET wa=NULL, wa_raw=NULL WHERE wa=?").bind(id), env.DB.prepare("UPDATE users SET wa=?, wa_raw=?, last_inbound=? WHERE id=?").bind(id, to, Date.now(), l.user)];
+  await env.DB.batch([...st, env.DB.prepare("DELETE FROM links WHERE code=?").bind(code)]);
+  await sendText(env, to, "✅ Conectado ao Uiraçu!\n\n" + AJUDA);
 }
 
+/** Mensagem já normalizada: { type: "text" | "audio" | "image" | "outro", text?, id? } */
+async function tratar(env, user, to, m) {
+  await env.DB.prepare("UPDATE users SET last_inbound=? WHERE id=?").bind(Date.now(), user.id).run();
+  if (!String(to).startsWith("tg:")) await env.DB.prepare("UPDATE users SET wa_raw=? WHERE id=?").bind(to, user.id).run();
+  try {
+    if (user.pending_report && !/^(relat|pdf|planilha)/.test(norm(m.text || ""))) { const ym = user.pending_report; await env.DB.prepare("UPDATE users SET pending_report=NULL WHERE id=?").bind(user.id).run(); await enviarRelatorio(env, user, ym, { csv: true, to }); }
+    if (m.type === "text") await texto(env, user, to, m.text);
+    else if (m.type === "audio" || m.type === "image") await midia(env, user, to, m.id, m.type);
+    else await sendText(env, to, "Eu entendo texto, áudio e foto da nota fiscal. Digite *ajuda* para ver como.");
+  } catch (e) {
+    console.log("erro no bot:", e && e.message);
+    await sendText(env, to, "Tive um problema aqui. Tente de novo em instantes.").catch(() => {});
+  }
+}
+
+/** WhatsApp */
 export async function onMessage(env, m) {
   const from = m.from, wa = normWa(from);
   const ins = await env.DB.prepare("INSERT OR IGNORE INTO seen(id,t) VALUES(?,?)").bind(m.id, Date.now()).run();
   if (!ins.meta.changes) return; // o WhatsApp reenvia: já tratei esta
   const text = m.type === "text" ? String(m.text?.body || "").trim() : "";
-  let user = await env.DB.prepare("SELECT * FROM users WHERE wa=?").bind(wa).first();
+  const user = await env.DB.prepare("SELECT * FROM users WHERE wa=?").bind(wa).first();
   if (!user) {
     const mm = /^vincular\s+(\d{6})$/i.exec(text.replace(/\s+/g, " "));
-    if (mm) return vincular(env, mm[1], wa, from);
-    if (permitido(env, wa)) await sendText(env, from, "Este número ainda não está conectado. No app Uiraçu, aba *Gastos*, toque em *Conectar ao WhatsApp* e envie o código aqui.");
+    if (mm) return vincular(env, mm[1], "wa", wa, from);
+    if (permitidos(env).includes(wa)) await sendText(env, from, "Este número ainda não está conectado. No app Uiraçu, aba *Gastos*, toque em *Conectar ao WhatsApp* e envie o código aqui.");
     return;
   }
-  await env.DB.prepare("UPDATE users SET last_inbound=?, wa_raw=? WHERE id=?").bind(Date.now(), from, user.id).run();
-  try {
-    if (user.pending_report && !/^(relat|pdf|planilha)/.test(norm(text))) { const ym = user.pending_report; await env.DB.prepare("UPDATE users SET pending_report=NULL WHERE id=?").bind(user.id).run(); await enviarRelatorio(env, { ...user, wa_raw: from }, ym, { csv: true }); }
-    if (m.type === "text") await texto(env, user, from, text);
-    else if (m.type === "audio") await midia(env, user, from, m.audio?.id, "audio");
-    else if (m.type === "image") await midia(env, user, from, m.image?.id, "image");
-    else if (m.type === "document" && /^(application\/pdf|image\/)/.test(m.document?.mime_type || "")) await midia(env, user, from, m.document.id, "image");
-    else await sendText(env, from, "Eu entendo texto, áudio e foto da nota fiscal. Digite *ajuda* para ver como.");
-  } catch (e) {
-    console.log("erro no bot:", e && e.message);
-    await sendText(env, from, "Tive um problema aqui. Tente de novo em instantes.").catch(() => {});
+  const msg = m.type === "text" ? { type: "text", text } : m.type === "audio" ? { type: "audio", id: m.audio?.id } : m.type === "image" ? { type: "image", id: m.image?.id }
+    : m.type === "document" && /^(application\/pdf|image\/)/.test(m.document?.mime_type || "") ? { type: "image", id: m.document.id } : { type: "outro" };
+  await tratar(env, user, from, msg);
+}
+
+/** Telegram (só conversas privadas). "/relatorio setembro" vira "relatorio setembro". */
+export async function onTelegram(env, upd) {
+  const m = upd.message; if (!m || m.chat?.type !== "private" || !m.from) return;
+  const ins = await env.DB.prepare("INSERT OR IGNORE INTO seen(id,t) VALUES(?,?)").bind("tg" + upd.update_id, Date.now()).run();
+  if (!ins.meta.changes) return;
+  const id = String(m.from.id), to = "tg:" + m.chat.id;
+  const text = String(m.text ?? m.caption ?? "").trim().replace(/^\/(\w+)(@\w+)?/, "$1").trim();
+  const user = await env.DB.prepare("SELECT * FROM users WHERE tg=?").bind(id).first();
+  if (!user) {
+    const mm = /^(?:start|vincular)\s+(\d{6})$/i.exec(text.replace(/\s+/g, " "));
+    if (mm) return vincular(env, mm[1], "tg", id, to);
+    await sendText(env, to, "Olá! Ainda não conheço você. No app Uiraçu, aba *Gastos*, toque em *Conectar ao Telegram* e envie o código aqui.");
+    return;
   }
+  const doc = m.document && /^(application\/pdf|image\/)/.test(m.document.mime_type || "");
+  const msg = m.voice || m.audio ? { type: "audio", id: (m.voice || m.audio).file_id } : m.photo?.length ? { type: "image", id: m.photo[m.photo.length - 1].file_id }
+    : doc ? { type: "image", id: m.document.file_id } : text ? { type: "text", text } : { type: "outro" };
+  await tratar(env, user, to, msg);
 }
 
 async function confirmar(env, user, from, itens) {
@@ -138,7 +176,7 @@ async function confirmar(env, user, from, itens) {
 
 async function texto(env, user, from, text) {
   const hoje = hojeBRT(), n = norm(text);
-  if (/^(ajuda|help|menu|comandos|oi|ola|bom dia|boa tarde|boa noite|\?)$/.test(n)) return sendText(env, from, AJUDA);
+  if (/^(ajuda|help|menu|comandos|start|oi|ola|bom dia|boa tarde|boa noite|\?)$/.test(n)) return sendText(env, from, AJUDA);
   if (/^(desfazer|desfaz|apagar ultimo|apagar o ultimo|cancelar ultimo|errei)$/.test(n)) {
     const u = await ultimo(env, user.id); if (!u) return sendText(env, from, "Não há nada para desfazer.");
     await env.DB.prepare("UPDATE expenses SET deleted=1, upd=? WHERE user=? AND id=?").bind(Date.now(), user.id, u.id).run();
@@ -162,8 +200,8 @@ async function texto(env, user, from, text) {
     await env.DB.prepare("UPDATE users SET report_on=1, report_day=?, report_hour=? WHERE id=?").bind(dia, hora, user.id).run();
     return sendText(env, from, `✅ Combinado: todo dia ${dia}, às ${String(hora).padStart(2, "0")}h, eu te envio o relatório em PDF e a planilha.`);
   }
-  if (/^(relatorio|pdf)\b/.test(n)) { const ym = parseMes(n, hoje); await sendText(env, from, `Gerando o relatório de ${ymLabel(ym)}…`); await env.DB.prepare("UPDATE users SET pending_report=NULL WHERE id=?").bind(user.id).run(); return enviarRelatorio(env, { ...user, wa_raw: from }, ym); }
-  if (/^(planilha|csv|excel|exportar)\b/.test(n)) { const ym = parseMes(n, hoje); return enviarRelatorio(env, { ...user, wa_raw: from }, ym, { csv: true, pdf: false }); }
+  if (/^(relatorio|pdf)\b/.test(n)) { const ym = parseMes(n, hoje); await sendText(env, from, `Gerando o relatório de ${ymLabel(ym)}…`); await env.DB.prepare("UPDATE users SET pending_report=NULL WHERE id=?").bind(user.id).run(); return enviarRelatorio(env, user, ym, { to: from }); }
+  if (/^(planilha|csv|excel|exportar)\b/.test(n)) { const ym = parseMes(n, hoje); return enviarRelatorio(env, user, ym, { csv: true, pdf: false, to: from }); }
   if (/^(resumo|saldo|quanto gastei|balanco)\b/.test(n)) { const ym = parseMes(n, hoje); return sendText(env, from, resumoTxt(summarize(await doMes(env, user.id, ym), ym))); }
 
   const p = parseMessage(text, hoje);
@@ -182,7 +220,7 @@ async function midia(env, user, from, id, kind) {
   if (!id) return;
   if (!iaLigada(env)) return sendText(env, from, "Para entender áudio e foto eu preciso da IA, que ainda não está ligada. Por enquanto, escreva: *gastei 45 no mercado*.");
   if (!(await usaIa(env, user))) return sendText(env, from, "Cheguei ao limite de áudios e fotos de hoje. Escreva em texto ou tente amanhã.");
-  const { bytes, mime } = await downloadMedia(env, id);
+  const { bytes, mime } = await downloadMedia(env, from, id);
   const r = await extrairMidia(env, { kind: kind === "audio" ? "audio" : "image", mime: mime || (kind === "audio" ? "audio/ogg" : "image/jpeg"), bytes, hoje: hojeBRT() });
   if (!r.itens.length) return sendText(env, from, kind === "audio" ? "Ouvi o áudio, mas não achei valores. Tente dizer, por exemplo: \"gastei quarenta e cinco reais no mercado\"." : "Não consegui ler um valor nessa foto. Tente uma foto mais de perto, com o total visível, ou escreva o gasto.");
   await salvarItens(env, user.id, r.itens);
@@ -211,7 +249,7 @@ export async function resumoSemanal(env, user, hoje) {
 export async function agendados(env, agora = Date.now()) {
   const b = new Date(agora - BRT), dia = b.getUTCDate(), hora = b.getUTCHours(), ymNow = b.toISOString().slice(0, 7);
   const dias = new Date(Date.UTC(+ymNow.slice(0, 4), +ymNow.slice(5), 0)).getUTCDate();
-  const { results } = await env.DB.prepare("SELECT * FROM users WHERE report_on=1 AND wa IS NOT NULL AND report_hour=?").bind(hora).all();
+  const { results } = await env.DB.prepare("SELECT * FROM users WHERE report_on=1 AND (wa IS NOT NULL OR tg_chat IS NOT NULL) AND report_hour=?").bind(hora).all();
   const feitos = [];
   for (const u of results) {
     if (Math.min(u.report_day, dias) !== dia) continue;
@@ -219,7 +257,7 @@ export async function agendados(env, agora = Date.now()) {
     const ym = dia <= 10 ? ymAdd(ymNow, -1) : ymNow; // nos primeiros dias do mês o relatório é do mês que fechou
     await env.DB.prepare("UPDATE users SET last_report=? WHERE id=?").bind(marca, u.id).run();
     let modo = "janela";
-    if (u.last_inbound && agora - u.last_inbound < 23 * 3600e3) { try { await enviarRelatorio(env, u, ym, { csv: true }); } catch (e) { modo = "erro"; } }
+    if (u.tg_chat || (u.last_inbound && agora - u.last_inbound < 23 * 3600e3)) { try { await enviarRelatorio(env, u, ym, { csv: true }); } catch (e) { modo = "erro"; } }
     else {
       try { await sendTemplate(env, u.wa_raw || u.wa, env.WA_TEMPLATE_REPORT || "relatorio_mensal"); await env.DB.prepare("UPDATE users SET pending_report=? WHERE id=?").bind(ym, u.id).run(); modo = "modelo"; }
       catch (e) { modo = "so_push"; await env.DB.prepare("UPDATE users SET pending_report=? WHERE id=?").bind(ym, u.id).run(); }
@@ -233,7 +271,7 @@ export async function agendados(env, agora = Date.now()) {
     for (const u of sem) {
       await env.DB.prepare("UPDATE users SET last_weekly=? WHERE id=?").bind(hojeIso, u.id).run();
       const r = await resumoSemanal(env, u, hojeIso); let canal = "push";
-      if (u.wa && u.last_inbound && agora - u.last_inbound < 23 * 3600e3) { try { await sendText(env, u.wa_raw || u.wa, r.texto); canal = "whatsapp"; } catch {} }
+      if (u.tg_chat || (u.wa && u.last_inbound && agora - u.last_inbound < 23 * 3600e3)) { try { await sendText(env, destino(u), r.texto); canal = u.tg_chat ? "telegram" : "whatsapp"; } catch {} }
       await pushUser(env, u, r.push); feitos.push({ user: u.id, semanal: canal });
     }
   }
