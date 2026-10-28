@@ -34,6 +34,7 @@ function instalaFetch() {
     if (url.includes("graph.facebook.com") && url.endsWith("/media")) { const f = init.body.get("file"); saidas.push({ upload: f.name, bytes: new Uint8Array(await f.arrayBuffer()) }); return new Response(JSON.stringify({ id: "up1" }), { status: 200 }); }
     if (url.includes("graph.facebook.com")) return new Response(JSON.stringify({ url: "https://midia.test/x", mime_type: "audio/ogg; codecs=opus", file_size: 10 }), { status: 200 });
     if (url.startsWith("https://midia.test")) return new Response(new Uint8Array([1, 2, 3]));
+    if (url.includes("cota-estourada")) return new Response(JSON.stringify({ error: { message: "quota exceeded" } }), { status: 429 });
     if (url.includes("modelo-fantasma")) return new Response(JSON.stringify({ error: { message: "model not found" } }), { status: 404 });
     if (url.includes("generativelanguage.googleapis.com/v1beta/models?")) return new Response(JSON.stringify({ models: [{ name: "models/gemini-2.0-flash-lite", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-2.5-pro", supportedGenerationMethods: ["generateContent"] }] }), { status: 200 });
     if (url.includes("generativelanguage.googleapis.com")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(gemini) }] } }] }), { status: 200 });
@@ -248,4 +249,11 @@ test("IA: se o modelo configurado não existe (404), o servidor escolhe um flash
   await zap({ type: "audio", audio: { id: "a1" } });
   assert.ok(saidas.some((s) => s.type === "text" && /Entendi/.test(s.text.body)), "entendeu o áudio apesar do modelo errado");
   assert.deepEqual(linhas("SELECT v FROM expenses").map((r) => r.v), [20]);
+});
+
+test("IA: se o modelo estoura a cota (429), tenta os estáveis em ordem e ignora os experimentais", async () => {
+  env.GEMINI_MODEL = "gemini-cota-estourada"; await vincula();
+  gemini = { transcricao: "", itens: [{ tipo: "gasto", valor: 33, data: null, descricao: "Padaria", categoria: "mercado" }] };
+  await zap({ type: "image", image: { id: "i1" } });
+  assert.deepEqual(linhas("SELECT v FROM expenses").map((r) => r.v), [33]);
 });

@@ -14,26 +14,33 @@ const PROMPTS = {
 
 export const iaLigada = (env) => !!env.GEMINI_API_KEY;
 
-let modeloEscolhido = null; // lembrado enquanto o servidor estiver "quente"
+let modeloBom = null; // o modelo que funcionou por último (lembrado enquanto o servidor estiver "quente")
 
-/** Se o modelo pedido não existe para esta chave (404), pergunta ao Google quais existem e escolhe um "flash" estável. */
-async function descobreModelo(env) {
-  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=100", { headers: { "x-goog-api-key": env.GEMINI_API_KEY } });
+/** Modelos "flash" estáveis desta chave, do mais novo ao mais antigo; ignora experimentais, de imagem, voz ao vivo e "omni". */
+async function candidatos(env) {
+  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": env.GEMINI_API_KEY } });
   if (!r.ok) throw new Error(`IA lista de modelos ${r.status}`);
-  const j = await r.json();
-  const nome = (j.models || []).filter((m) => /flash/.test(m.name) && !/lite|image|tts|live|thinking|exp|preview/.test(m.name) && (m.supportedGenerationMethods || []).includes("generateContent")).map((m) => m.name.replace(/^models\//, "")).sort().reverse()[0];
-  if (!nome) throw new Error("IA: nenhum modelo flash disponível para esta chave");
-  return nome;
+  const nomes = ((await r.json()).models || []).filter((m) => (m.supportedGenerationMethods || []).includes("generateContent")).map((m) => m.name.replace(/^models\//, ""));
+  const ruins = /omni|image|tts|live|thinking|exp|preview|audio|embed|robot|computer|veo|imagen/;
+  const flash = nomes.filter((n) => /flash/.test(n) && !ruins.test(n));
+  const versao = (n) => { const m = /gemini-(\d+(?:\.\d+)?)-flash(-lite)?$/.exec(n); return m ? parseFloat(m[1]) * 10 - (m[2] ? 1 : 0) : n === "gemini-flash-latest" ? 0.5 : -1; };
+  return flash.sort((x, y) => versao(y) - versao(x));
 }
 
-async function gemini(env, parts, tentou = false) {
-  const model = modeloEscolhido || env.GEMINI_MODEL || "gemini-2.5-flash";
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-    body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: "application/json", temperature: 0 } }),
-  });
-  if (r.status === 404 && !tentou) { modeloEscolhido = await descobreModelo(env); return gemini(env, parts, true); }
-  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(`IA ${r.status} (${model}): ${String(e.error?.message || "").slice(0, 160)}`); }
+async function gemini(env, parts) {
+  let fila = [modeloBom || env.GEMINI_MODEL || "gemini-2.5-flash"], expandiu = false; const erros = []; let r;
+  for (let i = 0; i < fila.length && i < 6; i++) {
+    const model = fila[i];
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+      body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: "application/json", temperature: 0 } }),
+    });
+    if (r.ok) { modeloBom = model; break; }
+    const e = await r.json().catch(() => ({})); erros.push(`${model}: ${r.status} ${String(e.error?.message || "").slice(0, 90)}`);
+    if (![403, 404, 429].includes(r.status)) break;             // erro de outro tipo: não adianta trocar de modelo
+    if (i === fila.length - 1 && !expandiu) { expandiu = true; fila = [...fila, ...(await candidatos(env)).filter((x) => !fila.includes(x))]; }
+  }
+  if (!r.ok) throw new Error(`IA ${r.status}: ${erros.join(" | ")}`);
   const j = await r.json();
   const txt = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
   return JSON.parse(txt.replace(/^```json|```$/g, "").trim());
