@@ -28,16 +28,22 @@ async function candidatos(env) {
 }
 
 async function gemini(env, parts) {
-  let fila = [modeloBom || env.GEMINI_MODEL || "gemini-2.5-flash"], expandiu = false; const erros = []; let r;
+  let fila = [modeloBom || env.GEMINI_MODEL || "gemini-2.5-flash"], expandiu = false; const erros = []; let r; const t0 = Date.now();
   for (let i = 0; i < fila.length && i < 6; i++) {
-    const model = fila[i];
-    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-      body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: "application/json", temperature: 0 } }),
-    });
+    const model = fila[i], restante = 26000 - (Date.now() - t0); if (restante < 3000) { erros.push("tempo esgotado"); break; }
+    const geracao = { responseMimeType: "application/json", temperature: 0 };
+    if (/gemini-2\.5-flash$/.test(model)) geracao.thinkingConfig = { thinkingBudget: 0 };   // sem "pensar": bem mais rápido para ler áudio e nota
+    const ini = Date.now();
+    try {
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY }, signal: AbortSignal.timeout(Math.min(12000, restante)),
+        body: JSON.stringify({ contents: [{ parts }], generationConfig: geracao }),
+      });
+    } catch (e) { console.log(`IA ${model}: sem resposta em ${Date.now() - ini} ms`); erros.push(`${model}: demorou demais`); r = { ok: false, status: 408 }; continue; }
+    console.log(`IA ${model} -> ${r.status} em ${Date.now() - ini} ms`);
     if (r.ok) { modeloBom = model; break; }
     const e = await r.json().catch(() => ({})); erros.push(`${model}: ${r.status} ${String(e.error?.message || "").slice(0, 90)}`);
-    if (![403, 404, 429].includes(r.status)) break;             // erro de outro tipo: não adianta trocar de modelo
+    if (![400, 403, 404, 429, 500, 503].includes(r.status)) break;
     if (i === fila.length - 1 && !expandiu) { expandiu = true; fila = [...fila, ...(await candidatos(env)).filter((x) => !fila.includes(x))]; }
   }
   if (!r.ok) throw new Error(`IA ${r.status}: ${erros.join(" | ")}`);
