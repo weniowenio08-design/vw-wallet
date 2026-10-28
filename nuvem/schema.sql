@@ -18,7 +18,11 @@ CREATE TABLE IF NOT EXISTS users (
   tg TEXT,                                  -- id do usuário no Telegram (vínculo)
   tg_chat TEXT,                             -- chat privado do Telegram (onde o robô responde e escreve primeiro)
   modo TEXT NOT NULL DEFAULT 'p',           -- conta padrão dos próximos lançamentos: p = pessoal, e = empresa
-  saldos TEXT                               -- JSON {p:{v,ts,skip},e:{...}}: dinheiro informado em cada conta
+  saldos TEXT,                              -- JSON {p:{v,ts,skip},e:{...}}: dinheiro informado em cada conta
+  owner TEXT,                               -- família: id de quem é dono do caderno de lançamentos (nulo = o próprio)
+  apelido TEXT,                             -- como aparece nos lançamentos ("por Maria")
+  backup_on INTEGER NOT NULL DEFAULT 0,     -- backup mensal da planilha completa
+  last_backup TEXT
 );
 CREATE TABLE IF NOT EXISTS expenses (
   user TEXT NOT NULL, id TEXT NOT NULL,
@@ -37,3 +41,5 @@ CREATE INDEX IF NOT EXISTS ex_ts ON expenses(user, ts);
 CREATE TABLE IF NOT EXISTS links (code TEXT PRIMARY KEY, user TEXT NOT NULL, exp INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, t INTEGER NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_tg ON users(tg) WHERE tg IS NOT NULL;
+CREATE TABLE IF NOT EXISTS lembretes (id TEXT PRIMARY KEY, user TEXT NOT NULL, ts TEXT NOT NULL, h INTEGER NOT NULL DEFAULT 8, txt TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS lem_user ON lembretes(user, done, ts);

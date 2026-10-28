@@ -23,6 +23,7 @@ function novoDB() {
 
 // ---- mundo simulado
 const vapid = await gerarVapid();
+let midSeq = 100;
 const TOKEN = "a".repeat(64), WA = "5581999990000";
 let env, saidas, gemini, pushes;
 const ctxFn = () => { const p = []; return { waitUntil: (x) => p.push(x), done: () => Promise.all(p) }; };
@@ -40,7 +41,7 @@ function instalaFetch() {
     if (url.includes("generativelanguage.googleapis.com")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(gemini) }] } }] }), { status: 200 });
     if (url.startsWith("https://push.test")) { pushes.push(url); return new Response(null, { status: 201 }); }
     if (url.startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array([4, 5, 6]));
-    if (url.includes("api.telegram.org") && url.endsWith("/sendMessage")) { const b = JSON.parse(init.body); saidas.push({ type: "text", tg: true, to: b.chat_id, text: { body: b.text } }); return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 }); }
+    if (url.includes("api.telegram.org") && url.endsWith("/sendMessage")) { const b = JSON.parse(init.body); const mid = ++midSeq; saidas.push({ type: "text", tg: true, to: b.chat_id, text: { body: b.text }, mid }); return new Response(JSON.stringify({ ok: true, result: { message_id: mid } }), { status: 200 }); }
     if (url.includes("api.telegram.org") && url.endsWith("/sendDocument")) { const f = init.body.get("document"); saidas.push({ upload: f.name, tg: true, to: init.body.get("chat_id"), bytes: new Uint8Array(await f.arrayBuffer()) }); return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 }); }
     if (url.includes("api.telegram.org") && url.endsWith("/getFile")) return new Response(JSON.stringify({ ok: true, result: { file_path: "voice/file_1.oga", file_size: 10 } }), { status: 200 });
     throw new Error("fetch inesperado: " + url);
@@ -179,12 +180,71 @@ test("contas a vencer: anota, lista, lembra às 8h, dá baixa; 'paguei' de gasto
   await zap(txt("resumo")); assert.doesNotMatch(ultima(), /180,00/);   // não conta como gasto ainda
   await zap(txt("contas a vencer")); assert.match(ultima(), /luz[\s\S]*180,00/i);
   const dia = linhas("SELECT ts FROM expenses WHERE x LIKE '%\"pd\":1%'")[0].ts, hora8 = Date.parse(dia + "T11:00:00Z") - 864e5;   // 08h de Brasília, 1 dia antes
+  env.DB.raw.prepare("UPDATE users SET last_inbound=?").run(hora8 - 3600e3);   // dentro da janela de 24 h, qualquer que seja a hora em que o teste rode
   saidas.length = 0; await agendados(env, hora8); assert.match(ultima() || "", /Contas a vencer[\s\S]*amanhã/);
   saidas.length = 0; await agendados(env, hora8); assert.equal(saidas.length, 0);   // não repete no mesmo dia
   await zap(txt("paguei 50 no uber")); assert.match(ultima(), /50,00/); assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE x LIKE '%\"pd\":1%'")[0].n, 1);
   await zap(txt("paguei a luz")); assert.match(ultima(), /Baixa dada/);
   assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE x LIKE '%\"pd\":1%'")[0].n, 0);
   await zap(txt("contas a vencer")); assert.match(ultima(), /Nenhuma conta a vencer/);
+});
+
+test("responder à mensagem do bot corrige valor, categoria, conta, data e apaga", async () => {
+  await vinculaTg();
+  const ultimaMsg = () => saidas.filter((x) => x.tg && x.type === "text").at(-1), corpo = () => ultimaMsg().text.body;
+  await tgz({ text: "mercado 45" }); let conf = ultimaMsg();
+  await tgz({ text: "foi 38", reply_to_message: { message_id: conf.mid } }); assert.match(corpo(), /Corrigi o valor.*38,00/s);
+  assert.equal(linhas("SELECT v FROM expenses")[0].v, 38);
+  await tgz({ text: "categoria lazer", reply_to_message: { message_id: conf.mid } }); assert.match(corpo(), /Categoria.*Lazer/s); assert.equal(linhas("SELECT c FROM expenses")[0].c, "lazer");
+  await tgz({ text: "empresa", reply_to_message: { message_id: conf.mid } }); assert.equal(linhas("SELECT w FROM expenses")[0].w, "e");
+  await tgz({ text: "ontem", reply_to_message: { message_id: conf.mid } }); assert.match(corpo(), /Data/); assert.notEqual(linhas("SELECT ts FROM expenses")[0].ts, hojeISO());
+  await tgz({ text: "uber 20", reply_to_message: { message_id: conf.mid } }); assert.equal(linhas("SELECT COUNT(*) n FROM expenses")[0].n, 2);   // não é correção: vira lançamento novo
+  await tgz({ text: "apagar", reply_to_message: { message_id: conf.mid } }); assert.match(corpo(), /Apaguei/); assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE deleted=0")[0].n, 1);
+  await tgz({ text: "notebook 600 em 3x" }); conf = ultimaMsg(); await tgz({ text: "40", reply_to_message: { message_id: conf.mid } }); assert.match(corpo(), /parcelado/);
+  await tgz({ text: "apagar", reply_to_message: { message_id: conf.mid } }); assert.match(corpo(), /3 lançamentos/);
+});
+const hojeISO = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+
+test("família: convite, entrar, lançar pelo bot do membro, resumo por pessoa e sair", async () => {
+  await vinculaTg();
+  const T2 = "b".repeat(64), ult = (chat) => saidas.filter((x) => x.tg && x.to === chat && x.type === "text").at(-1).text.body;
+  await api("/api/sync", { since: 0, items: [] }, T2); const { body: reg } = await api("/api/register", {}, T2); await tgz({ text: "/start " + reg.code }, { de: 888, chat: 888 });
+  await tgz({ text: "convidar familia" }); const cod = /F\d{5}/.exec(ult(777))[0];
+  await tgz({ text: "entrar na família " + cod + " maria" }, { de: 888, chat: 888 }); assert.match(ult(888), /entrou na família/); assert.match(ult(777), /Maria.*entrou/);
+  await tgz({ text: "ração 100" }, { de: 888, chat: 888 }); assert.match(ult(888), /por Maria/);
+  assert.equal(linhas("SELECT COUNT(*) n FROM expenses")[0].n, 1); assert.match(linhas("SELECT x FROM expenses")[0].x, /Maria/);
+  await tgz({ text: "mercado 50" }); await tgz({ text: "resumo" }); assert.match(ult(777), /Por pessoa:.*Maria R\$\s100,00/);
+  await tgz({ text: "últimos" }, { de: 888, chat: 888 }); assert.match(ult(888), /por Maria/);
+  await tgz({ text: "apagar todos os gastos" }, { de: 888, chat: 888 }); assert.match(ult(888), /Só quem criou a família/);
+  await tgz({ text: "convidar familia" }, { de: 888, chat: 888 }); assert.match(ult(888), /só quem a criou/);
+  await tgz({ text: "familia" }); assert.match(ult(777), /Maria/);
+  await tgz({ text: "sair da familia" }, { de: 888, chat: 888 }); await tgz({ text: "uber 20" }, { de: 888, chat: 888 });
+  assert.equal(linhas("SELECT COUNT(*) n FROM expenses")[0].n, 3); assert.equal(linhas("SELECT COUNT(DISTINCT user) n FROM expenses")[0].n, 2);   // agora o caderno do membro é só dele
+  await tgz({ text: "entrar na familia F00000 x" }, { de: 888, chat: 888 }); assert.match(ult(888), /não existe ou venceu/);
+});
+
+test("lembretes: cria em linguagem natural, lista, avisa na hora e dá baixa", async () => {
+  await vincula();
+  await zap(txt("lembra de cobrar o fulano amanhã às 9h")); assert.match(ultima(), /Combinado.*cobrar o fulano/s);
+  const r = linhas("SELECT ts,h,txt FROM lembretes")[0]; assert.equal(r.h, 9); assert.equal(r.txt, "cobrar o fulano");
+  await zap(txt("lembretes")); assert.match(ultima(), /1\..*cobrar o fulano/s);
+  const quando = Date.parse(r.ts + "T12:00:00Z");   // 09h em Brasília
+  env.DB.raw.prepare("UPDATE users SET last_inbound=?").run(quando - 3600e3);
+  saidas.length = 0; await agendados(env, quando - 2 * 3600e3); assert.equal(saidas.length, 0);   // 07h: ainda não é a hora
+  await agendados(env, quando); assert.match(ultima(), /Lembrete.*cobrar o fulano/s);
+  await agendados(env, quando); assert.equal(saidas.filter((x) => /Lembrete/.test(x.text?.body || "")).length, 1);   // não repete
+  await zap(txt("lembra de pagar o iptu dia 15")); await zap(txt("feito 1")); assert.match(ultima(), /Pronto.*iptu/i);
+  await zap(txt("lembretes")); assert.match(ultima(), /Nenhum lembrete/);
+});
+
+test("backup: planilha completa sob demanda e todo dia 1º às 9h", async () => {
+  await vincula(); await zap(txt("mercado 10")); await zap(txt("uber 20"));
+  saidas.length = 0; await zap(txt("backup")); const up = saidas.find((x) => x.upload); assert.match(up.upload, /backup/); assert.match(new TextDecoder().decode(up.bytes), /Mercado[\s\S]*Transporte/);
+  await zap(txt("backup automatico")); assert.equal(linhas("SELECT backup_on FROM users")[0].backup_on, 1);
+  const dia1 = Date.UTC(2026, 10, 1, 12, 0, 0);   // 1º/11, 09h em Brasília
+  env.DB.raw.prepare("UPDATE users SET last_inbound=?").run(dia1 - 3600e3);
+  saidas.length = 0; await agendados(env, dia1); assert.equal(saidas.filter((x) => x.upload).length, 1);
+  saidas.length = 0; await agendados(env, dia1); assert.equal(saidas.filter((x) => x.upload).length, 0);   // uma vez por mês
 });
 
 test("repetição do mesmo id é ignorada", async () => {

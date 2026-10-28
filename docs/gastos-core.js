@@ -156,14 +156,15 @@ export function parseConta(text) {
 }
 
 // ------------------------------------------------------------ extras do lançamento: meio de pagamento, lote, dedutível, parcelas
-export const EXTRAS = ["m", "l", "dd", "pg", "pd"];
+export const EXTRAS = ["m", "l", "dd", "pg", "pd", "u"];
 /** Valida os campos extras vindos de fora. */
 export function cleanExtras(x) {
   const ex = {};
   if (typeof x.m === "string" && x.m.trim()) ex.m = x.m.trim().slice(0, 24);
   if (typeof x.l === "string" && x.l.trim()) ex.l = x.l.trim().slice(0, 30);
   if (x.dd) ex.dd = 1;
-  if (x.pd) ex.pd = 1;   // conta a vencer: ainda não paga, fora dos totais até a baixa
+  if (x.pd) ex.pd = 1;
+  if (typeof x.u === "string" && x.u.trim()) ex.u = x.u.trim().slice(0, 16);   // quem lançou (família)   // conta a vencer: ainda não paga, fora dos totais até a baixa
   if (x.pg && typeof x.pg === "object") {
     const i = Math.round(+x.pg.i), n = Math.round(+x.pg.n), g = String(x.pg.g || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 16);
     if (g && i >= 1 && n >= i && n <= 60) ex.pg = { g, i, n };

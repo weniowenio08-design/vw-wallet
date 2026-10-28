@@ -1,7 +1,7 @@
 // Testes da agenda dos gastos: contas a vencer, fatura do cartão, "posso gastar?" e fechamento do mês (lógica pura).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aVencer, calendarioMes, faturaCartao, podeGastar, fechamento, prazo } from "../../docs/gastos-agenda.js";
+import { aVencer, calendarioMes, faturaCartao, podeGastar, fechamento, prazo, dataLembrete } from "../../docs/gastos-agenda.js";
 import { parseExtras, parseMessage, expandir, ajustaVencimento, summarize } from "../../docs/gastos-core.js";
 
 const HOJE = "2026-10-28";
@@ -46,4 +46,14 @@ test("fechamento do mês: melhorou, piorou e sugestão", () => {
   ];
   const f = fechamento(L, "2026-10"); assert.equal(f.gastos, 900); assert.equal(f.anterior, 800); assert.equal(f.sobra, 2100);
   assert.equal(f.piorou[0].k, "mercado"); assert.equal(f.melhorou[0].k, "lazer"); assert.equal(f.sugestao, 760);   // média dos meses anteriores (800) * 0,95
+});
+
+test("lembrete em linguagem natural: data, hora e texto", () => {
+  assert.deepEqual(dataLembrete("cobrar o fulano dia 10 às 9h", HOJE), { date: "2026-11-10", h: 9, texto: "cobrar o fulano" });
+  assert.deepEqual(dataLembrete("pagar o IPTU 15/11", HOJE), { date: "2026-11-15", h: 8, texto: "pagar o IPTU" });
+  assert.equal(dataLembrete("ligar para o contador amanhã", HOJE).date, "2026-10-29");
+  assert.equal(dataLembrete("revisar contrato sexta", HOJE).date, "2026-10-30");   // 28/10/2026 é quarta
+  assert.equal(dataLembrete("reunião dia 28 às 14:30", HOJE).h, 14); assert.equal(dataLembrete("reunião dia 28 às 14:30", HOJE).date, "2026-10-28");
+  assert.equal(dataLembrete("pagar dia 5", HOJE).date, "2026-11-05"); assert.equal(dataLembrete("algo qualquer", HOJE).date, "2026-10-29");
+  assert.equal(dataLembrete("devolver em 3 dias", HOJE).date, "2026-10-31"); assert.equal(dataLembrete("ver depois de amanhã", HOJE).date, "2026-10-30");
 });

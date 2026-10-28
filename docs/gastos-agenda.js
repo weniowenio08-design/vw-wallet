@@ -1,7 +1,7 @@
 // Agenda e planejamento dos gastos (lógica pura, sem DOM): contas a vencer, fatura do cartão, "posso gastar?" e fechamento do mês.
 // Usada pela tela (gastos.js) e pelo bot (bot.js); testada em nuvem/test/agenda.test.mjs.
 // Lançamento "a vencer": o mesmo formato dos demais, com pd: 1 (ainda não pago). Ele NÃO entra nos totais do mês até receber baixa.
-import { summarize, ymAdd, catOf, fBRL } from "./gastos-core.js";
+import { summarize, ymAdd, catOf, fBRL, addMonthsISO } from "./gastos-core.js";
 import { comparaCategorias } from "./gastos-plus.js";
 
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -62,4 +62,29 @@ export function fechamento(list, ym) {
   const hist = [1, 2, 3].map((i) => summarize(list, ymAdd(ym, -i)).gastos).filter((v) => v > 0), media = hist.length ? r2(hist.reduce((s, v) => s + v, 0) / hist.length) : null;
   const base = media != null ? Math.min(S.gastos || media, media) : S.gastos || null;
   return { ym, n: S.itens.length, gastos: S.gastos, receitas: S.receitas, investido: S.investido, sobra: r2(S.receitas - S.gastos - S.investido), anterior: A.gastos, variacao, top: S.porCat.slice(0, 3), piorou, melhorou, sugestao: base ? r2(base * 0.95) : null };
+}
+
+const DIAS_SEMANA = { domingo: 0, segunda: 1, terca: 2, "terça": 2, quarta: 3, quinta: 4, sexta: 5, sabado: 6, "sábado": 6 };
+const addDias = (iso, n) => new Date(Date.parse(iso + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+/** Entende "cobrar o fulano dia 10 às 9h", "pagar o IPTU 15/11", "ligar para o contador amanhã", "revisar contrato sexta".
+ *  Devolve { date, h, texto }. Sem data, vale amanhã às 8h; "dia N" que já passou vai para o mês seguinte. */
+export function dataLembrete(frase, hoje) {
+  let t = String(frase || "").trim(), date = null, h = 8, m;
+  // atenção: \b do JavaScript não reconhece letras acentuadas; por isso "às" e "amanhã" usam (?:^|\s) e (?=\s|$)
+  if ((m = /(?:^|\s)[àa]s\s*(\d{1,2})(?:\s*[h:]\s*(\d{2}))?\s*h?(?=\s|$|[.,;!?])/i.exec(t)) && +m[1] <= 23) { h = +m[1]; t = t.replace(m[0], " "); }
+  else if ((m = /\b(\d{1,2})\s*h\b/i.exec(t)) && +m[1] <= 23) { h = +m[1]; t = t.replace(m[0], " "); }
+  if ((m = /(?:^|\s)depois de amanh[ãa](?=\s|$|[.,;!?])/i.exec(t))) { date = addDias(hoje, 2); t = t.replace(m[0], " "); }
+  else if ((m = /(?:^|\s)amanh[ãa](?=\s|$|[.,;!?])/i.exec(t))) { date = addDias(hoje, 1); t = t.replace(m[0], " "); }
+  else if ((m = /\bhoje\b/i.exec(t))) { date = hoje; t = t.replace(m[0], " "); }
+  else if ((m = /\bem (\d{1,3}) dias?\b/i.exec(t))) { date = addDias(hoje, +m[1]); t = t.replace(m[0], " "); }
+  else if ((m = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/.exec(t)) && +m[1] >= 1 && +m[1] <= 31 && +m[2] >= 1 && +m[2] <= 12) {
+    const y = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : +hoje.slice(0, 4); date = `${y}-${two(+m[2])}-${two(+m[1])}`;
+    if (!m[3] && date < hoje) date = `${y + 1}-${two(+m[2])}-${two(+m[1])}`; t = t.replace(m[0], " ");
+  } else if ((m = /\bdia (\d{1,2})\b/i.exec(t)) && +m[1] >= 1 && +m[1] <= 31) {
+    date = dia(hoje.slice(0, 7), +m[1]); if (date < hoje) date = dia(ymAdd(hoje.slice(0, 7), 1), +m[1]); t = t.replace(m[0], " ");
+  } else if ((m = /\b(domingo|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado)(?:-feira)?\b/i.exec(t))) {
+    const alvo = DIAS_SEMANA[m[1].toLowerCase()], atual = new Date(Date.parse(hoje + "T12:00:00Z")).getUTCDay();
+    date = addDias(hoje, ((alvo - atual + 7) % 7) || 7); t = t.replace(m[0], " ");
+  }
+  return { date: date || addDias(hoje, 1), h, texto: t.replace(/\s+/g, " ").replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, "").trim() };
 }
