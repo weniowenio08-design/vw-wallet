@@ -102,7 +102,7 @@ export const dBR = (iso) => `${iso.slice(8)}/${iso.slice(5, 7)}/${iso.slice(0, 4
 
 /** Resumo de um mês. Investimentos não entram em "gastos": aparecem como "investido". */
 export function summarize(list, ym, w) {
-  const itens = list.filter((x) => !x.deleted && x.ts.startsWith(ym) && (!w || contaDe(x) === w)).sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+  const itens = list.filter((x) => !x.deleted && x.ts.startsWith(ym) && !x.pd && (!w || contaDe(x) === w)).sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
   let gastos = 0, receitas = 0, investido = 0; const por = {};
   for (const x of itens) {
     if (x.tp === "receita") receitas += x.v;
@@ -117,9 +117,9 @@ export function summarize(list, ym, w) {
 /** CSV para Excel/Planilhas em português: separador ";", vírgula decimal, UTF-8 com BOM. */
 export function toCsv(list) {
   const q = (s) => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  const rows = [["Data", "Tipo", "Categoria", "Descrição", "Valor (R$)", "Origem", "Conta", "Meio", "Lote", "Dedutível", "Parcela"].map(q).join(";")];
+  const rows = [["Data", "Tipo", "Categoria", "Descrição", "Valor (R$)", "Origem", "Conta", "Meio", "Lote", "Dedutível", "Parcela", "A vencer"].map(q).join(";")];
   for (const x of [...list].filter((x) => !x.deleted).sort((a, b) => (a.ts < b.ts ? -1 : 1)))
-    rows.push([q(dBR(x.ts)), q(x.tp === "receita" ? "Receita" : "Gasto"), q(catOf(x.c, x.tp).n), q(x.d), q(String(x.v.toFixed(2)).replace(".", ",")), q(x.src === "wa" ? "WhatsApp" : "App"), q(contaDe(x) === "e" ? "Empresa" : "Pessoal"), q(x.m || ""), q(x.l || ""), q(x.dd ? "Sim" : ""), q(x.pg ? `${x.pg.i}/${x.pg.n}` : "")].join(";"));
+    rows.push([q(dBR(x.ts)), q(x.tp === "receita" ? "Receita" : "Gasto"), q(catOf(x.c, x.tp).n), q(x.d), q(String(x.v.toFixed(2)).replace(".", ",")), q(x.src === "wa" ? "WhatsApp" : "App"), q(contaDe(x) === "e" ? "Empresa" : "Pessoal"), q(x.m || ""), q(x.l || ""), q(x.dd ? "Sim" : ""), q(x.pg ? `${x.pg.i}/${x.pg.n}` : ""), q(x.pd ? "Sim" : "")].join(";"));
   return "﻿" + rows.join("\r\n") + "\r\n";
 }
 
@@ -156,13 +156,14 @@ export function parseConta(text) {
 }
 
 // ------------------------------------------------------------ extras do lançamento: meio de pagamento, lote, dedutível, parcelas
-export const EXTRAS = ["m", "l", "dd", "pg"];
+export const EXTRAS = ["m", "l", "dd", "pg", "pd"];
 /** Valida os campos extras vindos de fora. */
 export function cleanExtras(x) {
   const ex = {};
   if (typeof x.m === "string" && x.m.trim()) ex.m = x.m.trim().slice(0, 24);
   if (typeof x.l === "string" && x.l.trim()) ex.l = x.l.trim().slice(0, 30);
   if (x.dd) ex.dd = 1;
+  if (x.pd) ex.pd = 1;   // conta a vencer: ainda não paga, fora dos totais até a baixa
   if (x.pg && typeof x.pg === "object") {
     const i = Math.round(+x.pg.i), n = Math.round(+x.pg.n), g = String(x.pg.g || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 16);
     if (g && i >= 1 && n >= i && n <= 60) ex.pg = { g, i, n };
@@ -176,6 +177,7 @@ export function parseExtras(text) {
   let t = String(text ?? ""), ex = {};
   const take = (re, fn) => { const m = re.exec(t); if (m && fn(m) !== false) t = (t.slice(0, m.index) + " " + t.slice(m.index + m[0].length)).replace(/\s+/g, " ").trim(); };
   take(/\b(?:dedut[ií]vel|deduzir|declarar)\b/i, () => { ex.dd = 1; });
+  if (!/\b(?:paguei|pago|pagou|quitei)\b/i.test(t)) take(/\b(?:boleto|a pagar|vence|vencimento|vencendo|fatura)\b/i, () => { ex.pd = 1; });   // conta a vencer
   take(/\b(lote|galp[aã]o|talh[aã]o|avi[aá]rio|safra)\s+([\p{L}\d]{1,12})\b/iu, (m) => { ex.l = capl(m[1].toLowerCase()) + " " + m[2]; });
   if (!ex.l) take(/#\s*([\p{L}\d_-]{1,20})/u, (m) => { ex.l = capl(m[1]); });
   const parc = (n, por) => { n = +n; if (n < 2 || n > 60) return false; ex.parc = n; if (por) ex.porParcela = true; };
@@ -195,7 +197,12 @@ export function addMonthsISO(iso, k) {
 export function expandir(p, ex = {}, base = {}) {
   const extras = { ...(ex.m ? { m: ex.m } : {}), ...(ex.l ? { l: ex.l } : {}), ...(ex.dd ? { dd: 1 } : {}) };
   const n = ex.parc && p.tp === "gasto" ? ex.parc : 1;
-  if (n === 1) return [{ id: newId(), ts: p.date, v: p.v, c: p.c, d: p.d, tp: p.tp, ...base, ...extras }];
+  if (n === 1) return [{ id: newId(), ts: p.date, v: p.v, c: p.c, d: p.d, tp: p.tp, ...base, ...extras, ...(ex.pd && p.tp === "gasto" ? { pd: 1 } : {}) }];
   const g = newId().slice(0, 8), total = ex.porParcela ? Math.round(p.v * n * 100) / 100 : p.v, cada = ex.porParcela ? p.v : Math.floor((total * 100) / n) / 100, nome = p.d || catOf(p.c, p.tp).n;
   return Array.from({ length: n }, (_, i) => ({ id: newId(), ts: addMonthsISO(p.date, i), v: i === n - 1 ? Math.round((total - cada * (n - 1)) * 100) / 100 : cada, c: p.c, d: `${nome} (${i + 1}/${n})`, tp: p.tp, ...base, ...extras, pg: { g, i: i + 1, n } }));
+}
+
+/** Conta a vencer escrita com "dia 5": se o dia já passou neste mês, vale o do mês seguinte. */
+export function ajustaVencimento(p, ex, hoje) {
+  return ex.pd && p.date < hoje ? { ...p, date: addMonthsISO(p.date, 1) } : p;
 }

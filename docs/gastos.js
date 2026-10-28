@@ -1,7 +1,8 @@
 // Aba "Gastos": anotar (frase livre ou campos), resumo do mês, relatório em PDF, planilha CSV e o assessor no WhatsApp.
 // Tudo fica no aparelho (localStorage). Se a nuvem estiver ligada (config.json), os gastos que o bot anota no WhatsApp chegam aqui.
-import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, num as numCore, contaDe, contaNome, parseConta, valorBR, parseExtras, expandir } from "./gastos-core.js";
+import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, num as numCore, contaDe, contaNome, parseConta, valorBR, parseExtras, expandir, ajustaVencimento } from "./gastos-core.js";
 import { relatorioPdf } from "./relatorio.js";
+import { aVencer, calendarioMes, faturaCartao, podeGastar, fechamento, prazo } from "./gastos-agenda.js";
 import { serie, comparaCategorias, statusLimite, alertasNovos, fixosPendentes, progressoMeta, sobraDoMes, filtrar, saldoConta, porMeio, porLote, dedutiveis, comprometido } from "./gastos-plus.js";
 import { makeNuvem } from "./nuvem.js";
 
@@ -44,8 +45,10 @@ export function makeGastos(c) {
   }
   function checaAlertas() {
     const ym = hojeBRT().slice(0, 7), S = summarize(list(), ym, "p"), done = store.get("gastos_alertas", {}), feitos = done[ym] || (done[ym] = {});
+    const hojeD = hojeBRT(), venc = aVencer(list(), hojeD).filter((x) => x.dias <= 1 && x.dias >= -7 && !feitos[`v:${x.id}:${hojeD}`]);
+    for (const x of venc.slice(0, 2)) { feitos[`v:${x.id}:${hojeD}`] = 1; avisa("Conta a vencer", `${x.d || catOf(x.c).n} ${fBRL(x.v)} (${prazo(x.dias)})`); }
     const novos = alertasNovos({ S, limite: lim(), orcamentos: orc(), feitos, fBRL });
-    if (!novos.length) return;
+    if (!novos.length) { if (venc.length) { done[ym] = feitos; store.set("gastos_alertas", done); } return; }
     for (const k of Object.keys(done)) if (k < ymAdd(ym, -2)) delete done[k];
     store.set("gastos_alertas", done); novos.slice(0, 2).forEach((a) => avisa(a.titulo, a.corpo));
   }
@@ -67,7 +70,7 @@ export function makeGastos(c) {
       <label>Descrição</label><input id="g-d" placeholder="ex.: mercado do bairro" value="${e ? esc(e.d) : ""}">
       <label>Categoria</label><select id="g-c">${cats.map((x) => `<option value="${x.k}" ${e && e.c === x.k ? "selected" : ""}>${x.n}</option>`).join("")}</select>
       <div class="grid2"><div><label>Meio de pagamento</label><input id="g-m" list="g-ml" placeholder="ex.: Nubank, Pix" value="${e?.m ? esc(e.m) : ""}"><datalist id="g-ml">${MEIOS_SUG.map((m) => `<option value="${m}">`).join("")}</datalist></div><div><label>Lote / galpão</label><input id="g-l" placeholder="ex.: Lote 3" value="${e?.l ? esc(e.l) : ""}"></div></div>
-      <div class="grid2"><div><label>Parcelas (compra parcelada)</label><input id="g-parc" inputmode="numeric" placeholder="1" ${e ? "disabled" : ""}></div><div><label class="chk"><input type="checkbox" id="g-dd" ${e?.dd ? "checked" : ""}> Dedutível no imposto</label></div></div>
+      <div class="grid2"><div><label>Parcelas (compra parcelada)</label><input id="g-parc" inputmode="numeric" placeholder="1" ${e ? "disabled" : ""}></div><div><label class="chk"><input type="checkbox" id="g-dd" ${e?.dd ? "checked" : ""}> Dedutível no imposto</label><label class="chk" style="margin-top:6px"><input type="checkbox" id="g-pd" ${e?.pd ? "checked" : ""}> Conta a vencer (ainda não paguei; a data é o vencimento)</label></div></div>
       <label>Conta</label><select id="g-w"><option value="p" ${(e ? contaDe(e) : st.conta) !== "e" ? "selected" : ""}>Pessoal</option><option value="e" ${(e ? contaDe(e) : st.conta) === "e" ? "selected" : ""}>Empresa</option></select>
       <label>Foto da nota (opcional; fica só neste aparelho)${e && fotos.has(e.id) ? " · já tem uma foto" : ""}</label><input id="g-foto" type="file" accept="image/*">
       <button class="btn" id="g-save">${e ? "Salvar alterações" : "Salvar lançamento"}</button>${e ? '<button class="btn ghost" id="g-cancel">Cancelar edição</button>' : ""}</details>`;
@@ -165,6 +168,33 @@ export function makeGastos(c) {
     if (mudou) store.set("gastos_saldos", loc);
   }
 
+  const cal = (L) => {
+    const m = calendarioMes(L, st.ym), y = +st.ym.slice(0, 4), mo = +st.ym.slice(5) - 1, ini = new Date(Date.UTC(y, mo, 1)).getUTCDay(), n = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate(), hoje = hojeBRT();
+    let c = ["D", "S", "T", "Q", "Q", "S", "S"].map((d) => `<b>${d}</b>`).join("") + "<span></span>".repeat(ini);
+    for (let d = 1; d <= n; d++) { const iso = `${st.ym}-${String(d).padStart(2, "0")}`; c += `<span class="${m[iso] ? "due" : ""} ${iso === hoje ? "hoje" : ""}">${d}</span>`; }
+    return `<div class="cal">${c}</div>`;
+  };
+  function vencerCard(L) {
+    const hoje = hojeBRT(), ag = aVencer(L, hoje); if (!ag.length) return "";
+    const total = ag.reduce((s, x) => s + x.v, 0);
+    return secTitle(`${ic("calendar", "sm")} Contas a vencer`) + `<div class="card"><div class="gc-h"><span>${ag.length} conta${ag.length > 1 ? "s" : ""} em aberto</span><b class="num">${fBRL(total)}</b></div>` + ag.slice(0, 12).map((x) => `<div class="gl"><div class="gl-m"><div class="gl-d">${esc(x.d || catOf(x.c).n)}</div><div class="mut gl-s">${dBR(x.ts).slice(0, 5)} · <span class="${x.dias <= 1 ? "down" : ""}">${prazo(x.dias)}</span>${contaDe(x) === "e" ? " · Empresa" : ""}</div></div><div class="num gl-v">${fBRL(x.v)}</div><button class="btn sm" data-gpaga="${esc(x.id)}" style="margin:0">Paguei</button><button class="icbtn" data-gedit="${esc(x.id)}" aria-label="Editar">${ic("edit", "sm")}</button><button class="icbtn" data-gdel="${esc(x.id)}" aria-label="Excluir">${ic("trash", "sm")}</button></div>`).join("") + `<div class="mut" style="font-size:12px;margin:10px 0 4px">${esc(cap(ymLabel(st.ym)))}: os dias com conta aparecem em dourado.</div>${cal(L)}<div class="mut" style="font-size:12px;margin-top:8px">Para anotar uma nova: <i>boleto luz 180 dia 5</i>. O app e o bot avisam na véspera.</div></div>`;
+  }
+  function cartoesCard(L) {
+    const cs = store.get("gastos_cartoes", []), hoje = hojeBRT();
+    let h = secTitle(`${ic("wallet", "sm")} Cartões de crédito`) + `<div class="card">`;
+    h += cs.length ? cs.map((c) => { const f = faturaCartao(L, c, hoje); return `<div style="margin-bottom:12px"><div class="gc-h"><span><b>${esc(c.nome)}</b> <small class="mut">fecha dia ${c.corte}, vence dia ${c.venc}</small></span><b class="num">${fBRL(f.total)}</b></div><div class="mut" style="font-size:12.5px">Fatura aberta · fecha ${prazo(f.diasParaFechar)} (${dBR(f.fecha).slice(0, 5)}) · vence ${dBR(f.vencimento).slice(0, 5)}</div>${f.fechada ? `<div style="font-size:13px;margin-top:4px"><b>Fechada: ${fBRL(f.fechada.total)}</b> · vence ${prazo(f.fechada.dias)} (${dBR(f.fechada.vencimento).slice(0, 5)})</div>` : ""}${f.proxima ? `<div class="mut" style="font-size:12.5px;margin-top:2px">Próxima fatura (parcelas e compras já lançadas): ${fBRL(f.proxima)}</div>` : ""}<button class="btn ghost sm" data-gcrm="${esc(c.nome)}" style="margin:6px 0 0">Remover ${esc(c.nome)}</button></div>`; }).join("") : `<div class="mut" style="font-size:13px;margin-bottom:6px">Opcional. Cadastre o cartão e o app soma o que foi lançado com ele no meio de pagamento (ex.: "no nubank") e mostra a fatura.</div>`;
+    return h + `<details style="margin-top:4px"><summary>Cadastrar um cartão</summary><div class="grid2"><div><label>Nome (igual ao meio de pagamento)</label><input id="gc-n" placeholder="ex.: Nubank"></div><div><label>Dia que fecha</label><input id="gc-c" inputmode="numeric" placeholder="ex.: 12"></div><div><label>Dia que vence</label><input id="gc-v" inputmode="numeric" placeholder="ex.: 20"></div></div><button class="btn" id="gc-add">Guardar cartão</button></details></div>`;
+  }
+  function possoCard() {
+    return secTitle(`${ic("target", "sm")} Posso gastar?`) + `<div class="card"><div class="gq"><input id="gp-v" inputmode="decimal" placeholder="Quanto? (R$)"><select id="gp-c"><option value="">Qualquer categoria</option>${CATS.filter((c) => c.k !== "investimento").map((c) => `<option value="${c.k}">${esc(c.n)}</option>`).join("")}</select></div><button class="btn" id="gp-go">Ver se cabe</button><div id="gp-r" class="gpr"></div><div class="mut" style="font-size:12px;margin-top:8px">Considera o limite do mês, o orçamento da categoria, as contas a vencer e o dinheiro em conta, o que você tiver definido.</div></div>`;
+  }
+  function fechamentoCard(L) {
+    const f = fechamento(L, st.ym); if (!f.n) return "";
+    const v = f.variacao == null ? "" : `${f.variacao >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(f.variacao * 100))}% que no mês anterior (${fBRL(f.anterior)})`;
+    const lista = (t, its, cor) => (its.length ? `<div style="margin-top:8px"><b>${t}</b>${its.map((c) => `<div class="gc-h"><span><i class="gdot" style="background:${c.cor}"></i>${esc(c.n)}</span><b class="num ${cor}">${c.v > c.ant ? "+" : "-"}${fBRL(Math.abs(c.v - c.ant))}</b></div>`).join("")}</div>` : "");
+    return secTitle(`${ic("book", "sm")} Fechamento de ${esc(ymLabel(st.ym))}`) + `<div class="card"><details><summary>Ver o balanço do mês</summary><div class="gc-h" style="margin-top:8px"><span>Receitas</span><b class="num up">${fBRL(f.receitas)}</b></div><div class="gc-h"><span>Gastos</span><b class="num">${fBRL(f.gastos)}</b></div><div class="gc-h"><span>Sobrou</span><b class="num ${f.sobra >= 0 ? "up" : "down"}">${fBRL(f.sobra)}</b></div>${v ? `<div class="mut" style="font-size:12.5px;margin-top:4px">${v}</div>` : ""}${f.top.length ? `<div style="margin-top:8px"><b>Onde mais foi</b>${f.top.map((c) => `<div class="gc-h"><span><i class="gdot" style="background:${c.cor}"></i>${esc(c.n)}</span><b class="num">${fBRL(c.v)}</b></div>`).join("")}</div>` : ""}${lista("Piorou", f.piorou, "down")}${lista("Melhorou", f.melhorou, "up")}${f.sugestao ? `<div class="mut" style="font-size:13px;margin-top:10px">Meta sugerida para o mês seguinte: gastar até <b>${fBRL(f.sugestao)}</b> (5% abaixo do seu normal).</div><button class="btn ghost" id="gf-lim" data-v="${f.sugestao}">Usar como limite do mês</button>` : ""}</details></div>`;
+  }
+
   /** Visões que só aparecem quando há dados: por meio de pagamento, por lote, dedutíveis do ano e parcelas já assumidas. */
   function extrasCard(L) {
     const meios = porMeio(L, st.ym), lotes = porLote(L, st.ym), ded = dedutiveis(L, st.ym.slice(0, 4)), comp = comprometido(L, hojeBRT());
@@ -184,9 +214,9 @@ export function makeGastos(c) {
     let h = `<div class="gtop"><button class="icbtn" data-go="#/hoje" aria-label="Voltar">${ic("back")}</button><div class="gtit">Gastos</div></div><div class="mnav"><button class="icbtn" data-gm="-1" aria-label="Mês anterior">${ic("back")}</button><div class="mlabel">${cap(ymLabel(st.ym))}</div><button class="icbtn flip" data-gm="1" aria-label="Próximo mês" ${st.ym >= hoje ? "disabled" : ""}>${ic("back")}</button></div>`;
     h += contaSeg();
     h += `<div class="grid2" style="margin-bottom:10px">${kp("Receitas", S.receitas, "up")}${kp("Gastos", S.gastos)}${kp("Investido", S.investido)}${kp("Saldo", S.saldo, S.saldo >= 0 ? "up" : "down")}</div>`;
-    h += saldoCard() + (st.conta === "e" ? "" : limiteCard(S));
+    h += saldoCard() + possoCard() + vencerCard(L) + cartoesCard(L) + (st.conta === "e" ? "" : limiteCard(S));
     h += `<div class="mut" style="font-size:12.5px;line-height:1.5;margin:0 4px 6px">Escreva na barra de baixo, como falaria: "uber 23,50 ontem", "+1500 salário", "dia 12 farmácia 37".</div>` + secTitle(`${ic("plus", "sm")} Anotar com os campos`) + `<div class="card">${formCard()}</div>`;
-    h += categoriasCard(L) + extrasCard(L) + graficoCard(L) + metaCard(L, S) + fixosCard() + lancamentosCard(L, S);
+    h += categoriasCard(L) + extrasCard(L) + graficoCard(L) + metaCard(L, S) + fixosCard() + lancamentosCard(L, S) + fechamentoCard(L);
     h += secTitle(`${ic("down", "sm")} Relatório e planilha`) + `<div class="card"><button class="btn" id="g-pdf" style="margin-top:0">Relatório de ${esc(ymLabel(st.ym))} (PDF)</button><button class="btn ghost" id="g-csv">Planilha do mês (CSV, abre no Excel)</button><button class="btn ghost" id="g-csv-all">Planilha com tudo</button>${st.status?.linked ? '<button class="btn ghost" id="g-send">Enviar o relatório para o meu chat</button>' : ""}</div>`;
     h += secTitle(`${ic("user", "sm")} Assessor de gastos no chat`) + assessorCard();
     return h;
@@ -197,7 +227,7 @@ export function makeGastos(c) {
     const its = expandir(p, ex, { src: "app", deleted: 0, ...(w === "e" ? { w: "e" } : {}) });
     save([...list(), ...its]); its.forEach((x) => touch(x.id)); checaAlertas();
     st.ym = p.date.slice(0, 7);
-    toast(its.length > 1 ? `Parcelado em ${its.length}x de ${fBRL(its[0].v)} · ${catOf(p.c, p.tp).n}` : `${p.tp === "receita" ? "Receita" : "Gasto"} anotado: ${fBRL(p.v)} · ${catOf(p.c, p.tp).n}${w === "e" ? " · Empresa" : ""}${ex.m ? " · " + ex.m : ""}${ex.l ? " · " + ex.l : ""}`);
+    toast(its[0].pd ? `Conta a vencer em ${dBR(its[0].ts)}: ${fBRL(p.v)} · ${catOf(p.c, p.tp).n}` : its.length > 1 ? `Parcelado em ${its.length}x de ${fBRL(its[0].v)} · ${catOf(p.c, p.tp).n}` : `${p.tp === "receita" ? "Receita" : "Gasto"} anotado: ${fBRL(p.v)} · ${catOf(p.c, p.tp).n}${w === "e" ? " · Empresa" : ""}${ex.m ? " · " + ex.m : ""}${ex.l ? " · " + ex.l : ""}`);
   }
 
   function bindGastos(render) {
@@ -219,13 +249,13 @@ export function makeGastos(c) {
     }
     document.querySelectorAll("[data-gm]").forEach((b) => b.addEventListener("click", () => { st.ym = ymAdd(st.ym, +b.dataset.gm); st.all = false; render(); }));
     document.querySelectorAll("[data-gtp]").forEach((b) => b.addEventListener("click", () => { st.tp = b.dataset.gtp; if (st.editId) { const l = list(), e = l.find((x) => x.id === st.editId); if (e) e.tp = st.tp; } const dv = { v: $("#g-v")?.value, d: $("#g-d")?.value, dt: $("#g-dt")?.value }; render(); const set = (id, v) => { const el = $(id); if (el && v) el.value = v; }; set("#g-v", dv.v); set("#g-d", dv.d); set("#g-dt", dv.dt); $("#g-det").open = true; }));
-    const quick = () => { const pc = parseConta($("#gq").value), px = parseExtras(pc.text), p = parseMessage(px.text, hojeBRT()); if (!p.ok) return toast("Não achei o valor. Ex.: gastei 45 no mercado"); addFromParsed(p, pc.w || (st.conta === "e" ? "e" : "p"), px); render(); };
+    const quick = () => { const pc = parseConta($("#gq").value), px = parseExtras(pc.text), p = parseMessage(px.text, hojeBRT()); if (!p.ok) return toast("Não achei o valor. Ex.: gastei 45 no mercado"); addFromParsed(ajustaVencimento(p, px, hojeBRT()), pc.w || (st.conta === "e" ? "e" : "p"), px); render(); };
     $("#gq-ok")?.addEventListener("click", quick); $("#gq")?.addEventListener("keydown", (e) => { if (e.key === "Enter") quick(); });
     $("#g-save")?.addEventListener("click", async () => {
       const v = numCore($("#g-v").value), ts = $("#g-dt").value || hojeBRT(); if (!v || v <= 0) return toast("Digite o valor.");
       const tp = st.editId ? list().find((x) => x.id === st.editId)?.tp || st.tp : st.tp, file = $("#g-foto")?.files?.[0]; let id;
-      if (st.editId) { const l = list(), e = l.find((x) => x.id === st.editId); Object.assign(e, { v, ts, d: $("#g-d").value.trim(), c: $("#g-c").value, tp, w: $("#g-w")?.value === "e" ? "e" : undefined, m: $("#g-m")?.value.trim().slice(0, 24) || undefined, l: $("#g-l")?.value.trim().slice(0, 30) || undefined, dd: $("#g-dd")?.checked ? 1 : undefined }); save(l); touch(e.id); id = e.id; st.editId = null; toast("Lançamento atualizado."); }
-      else { const parc = Math.round(+$("#g-parc")?.value) || 0, its = expandir({ date: ts, v, c: $("#g-c").value, d: $("#g-d").value.trim(), tp }, { m: $("#g-m")?.value.trim().slice(0, 24), l: $("#g-l")?.value.trim().slice(0, 30), dd: $("#g-dd")?.checked, parc: parc >= 2 && parc <= 60 ? parc : 0 }, { src: "app", deleted: 0, ...($("#g-w")?.value === "e" ? { w: "e" } : {}) }); save([...list(), ...its]); its.forEach((x) => touch(x.id)); id = its[0].id; toast(its.length > 1 ? `Parcelado em ${its.length}x de ${fBRL(its[0].v)}.` : "Lançamento salvo."); }
+      if (st.editId) { const l = list(), e = l.find((x) => x.id === st.editId); Object.assign(e, { v, ts, d: $("#g-d").value.trim(), c: $("#g-c").value, tp, w: $("#g-w")?.value === "e" ? "e" : undefined, m: $("#g-m")?.value.trim().slice(0, 24) || undefined, l: $("#g-l")?.value.trim().slice(0, 30) || undefined, dd: $("#g-dd")?.checked ? 1 : undefined, pd: $("#g-pd")?.checked ? 1 : undefined }); save(l); touch(e.id); id = e.id; st.editId = null; toast("Lançamento atualizado."); }
+      else { const parc = Math.round(+$("#g-parc")?.value) || 0, its = expandir({ date: ts, v, c: $("#g-c").value, d: $("#g-d").value.trim(), tp }, { m: $("#g-m")?.value.trim().slice(0, 24), l: $("#g-l")?.value.trim().slice(0, 30), dd: $("#g-dd")?.checked, pd: $("#g-pd")?.checked, parc: parc >= 2 && parc <= 60 ? parc : 0 }, { src: "app", deleted: 0, ...($("#g-w")?.value === "e" ? { w: "e" } : {}) }); save([...list(), ...its]); its.forEach((x) => touch(x.id)); id = its[0].id; toast(its.length > 1 ? `Parcelado em ${its.length}x de ${fBRL(its[0].v)}.` : "Lançamento salvo."); }
       if (file) { try { await fotoPut(id, await comprime(file)); } catch { toast("Salvei o lançamento, mas não consegui guardar a foto."); } }
       checaAlertas(); st.ym = ts.slice(0, 7); render();
     });
@@ -237,6 +267,19 @@ export function makeGastos(c) {
       const hojeD = hojeBRT(), sd = saldos(); sd[w] = { v, ts: hojeD, skip: list().filter((x) => !x.deleted && contaDe(x) === w && x.ts >= hojeD).map((x) => x.id).slice(0, 200) };
       store.set("gastos_saldos", sd); empurraSaldos(); toast(`Saldo da ${contaNome(w).toLowerCase()} guardado.`); render();
     });
+    document.querySelectorAll("[data-gpaga]").forEach((b) => b.addEventListener("click", () => { const l = list(), e = l.find((x) => x.id === b.dataset.gpaga); if (e) { delete e.pd; e.ts = hojeBRT(); save(l); touch(e.id); checaAlertas(); toast("Baixa dada: entrou nos gastos de hoje."); } render(); }));
+    $("#gc-add")?.addEventListener("click", () => {
+      const nome = $("#gc-n").value.trim().slice(0, 24), corte = Math.round(+$("#gc-c").value), venc = Math.round(+$("#gc-v").value);
+      if (!nome || !(corte >= 1 && corte <= 31) || !(venc >= 1 && venc <= 31)) return toast("Preencha o nome e os dias de fechamento e de vencimento (1 a 31).");
+      const cs = store.get("gastos_cartoes", []).filter((c) => c.nome.toLowerCase() !== nome.toLowerCase()); cs.push({ nome, corte, venc }); store.set("gastos_cartoes", cs); render();
+    });
+    document.querySelectorAll("[data-gcrm]").forEach((b) => b.addEventListener("click", () => { store.set("gastos_cartoes", store.get("gastos_cartoes", []).filter((c) => c.nome !== b.dataset.gcrm)); render(); }));
+    $("#gp-go")?.addEventListener("click", () => {
+      const v = numCore($("#gp-v").value); if (!v || v <= 0) return toast("Digite o valor que você quer gastar.");
+      const w = st.conta === "e" ? "e" : "p", sd = saldos()[w], r = podeGastar({ valor: v, cat: $("#gp-c").value || undefined, hoje: hojeBRT(), list: list().filter((x) => contaDe(x) === w), limite: w === "p" ? lim() : 0, orcamentos: w === "p" ? orc() : {}, saldo: sd ? saldoConta(list(), w, sd) : null });
+      const box = $("#gp-r"); box.className = "gpr " + r.nivel; box.innerHTML = `<b>${esc(r.titulo)}</b>${r.linhas.map((x) => `<div>${esc(x)}</div>`).join("")}`;
+    });
+    $("#gf-lim")?.addEventListener("click", (e) => { const v = +e.currentTarget.dataset.v; store.set("gastos_lim", v); toast("Limite do mês definido em " + fBRL(v) + "."); render(); });
     document.querySelectorAll("[data-gsrm]").forEach((b) => b.addEventListener("click", () => { const sd = saldos(); delete sd[b.dataset.gsrm]; store.set("gastos_saldos", sd); empurraSaldos(); render(); }));
     document.querySelectorAll("[data-gedit]").forEach((b) => b.addEventListener("click", () => { st.editId = b.dataset.gedit; render(); $("#g-det")?.scrollIntoView({ behavior: "smooth", block: "center" }); }));
     document.querySelectorAll("[data-gdel]").forEach((b) => b.addEventListener("click", () => { if (!confirm("Excluir este lançamento?")) return; const l = list(), e = l.find((x) => x.id === b.dataset.gdel); if (e) { e.deleted = 1; save(l); touch(e.id); fotoDel(e.id); } render(); }));
@@ -287,7 +330,8 @@ export function makeGastos(c) {
   /** Resumo curto do mês corrente para o cartão da tela Hoje. */
   function resumoMes() {
     const ym = hojeBRT().slice(0, 7), S = summarize(list(), ym, "p"), E = summarize(list(), ym, "e"), l = lim(), sl = statusLimite(S.gastos, l);
-    return { empresa: E.gastos, nE: E.itens.length, ym, label: ymLabel(ym), gastos: S.gastos, receitas: S.receitas, saldo: S.saldo, n: S.itens.length, limite: l, p: sl ? sl.p : null, nivel: sl ? sl.nivel : null, top: S.porCat[0] || null };
+    const venc = aVencer(list().filter((x) => contaDe(x) === "p"), hojeBRT()).filter((x) => x.dias <= 7);
+    return { venc: venc.length ? { n: venc.length, total: Math.round(venc.reduce((s, x) => s + x.v, 0) * 100) / 100, prox: venc[0] } : null, empresa: E.gastos, nE: E.itens.length, ym, label: ymLabel(ym), gastos: S.gastos, receitas: S.receitas, saldo: S.saldo, n: S.itens.length, limite: l, p: sl ? sl.p : null, nivel: sl ? sl.nivel : null, top: S.porCat[0] || null };
   }
   return { vGastos, bindGastos, syncAgora, pushBox, resumoMes, nuvem: N };
 }

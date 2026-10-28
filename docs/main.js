@@ -323,7 +323,7 @@ function bindMeuPerfil() {
   });
 }
 function gastosCard() {
-  const r = G.resumoMes(), nm = (r.label || "").toLowerCase(), emp = r.nE ? `<div class="gsub" style="margin-top:6px">Empresa: ${fBRL(r.empresa)} no mês</div>` : "";
+  const r = G.resumoMes(), nm = (r.label || "").toLowerCase(), emp = (r.nE ? `<div class="gsub" style="margin-top:6px">Empresa: ${fBRL(r.empresa)} no mês</div>` : "") + (r.venc ? `<div class="gsub" style="margin-top:6px">📅 ${r.venc.n} conta${r.venc.n > 1 ? "s" : ""} a vencer em 7 dias (${fBRL(r.venc.total)}): ${esc(r.venc.prox.d || "conta")} ${r.venc.prox.dias <= 0 ? "venceu ou vence hoje" : r.venc.prox.dias === 1 ? "vence amanhã" : "em " + r.venc.prox.dias + " dias"}</div>` : "");
   const barra = r.p != null ? `<div class="gprog ${r.nivel}"><i style="width:${Math.min(100, Math.round(r.p * 100))}%"></i></div><div class="gsub">${Math.round(r.p * 100)}% do limite de ${fBRL(r.limite)}${r.nivel === "estourou" ? " · estourou" : r.nivel === "alerta" ? " · perto do limite" : ""}</div>` : (r.n ? `<div class="gsub">Receitas ${fBRL(r.receitas)} · saldo ${fBRL(r.saldo)}${r.top ? " · mais gasto: " + esc(r.top.n) : ""}</div>` : `<div class="gsub">Nada anotado em ${esc(nm)} ainda. Escreva "mercado 45" e pronto.</div>`);
   return `<div class="gcard" data-go="#/gastos" role="button" tabindex="0"><div class="gh"><span>${ic("receipt", "sm")} Gastos ${r.nE ? "pessoais " : ""}de ${esc(nm)}</span><b>Abrir ›</b></div><div class="gv num">${fBRL(r.gastos)}</div>${barra}${emp}<button class="btn" data-go="#/gastos" style="margin-top:12px">${ic("plus", "sm")} Anotar gasto</button></div>`;
 }

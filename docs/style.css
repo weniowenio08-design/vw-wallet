@@ -291,3 +291,9 @@ body.modo-gastos{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
 .pf-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 
 .chk{display:flex;align-items:center;gap:8px;margin-top:30px;font-weight:600}.chk input{width:auto;height:auto;margin:0}
+
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-size:13px}.cal b{color:var(--mut);font-size:11px}
+.cal span{padding:6px 0;border-radius:8px}.cal span.due{background:var(--gold);color:#0D0F10;font-weight:800}.cal span.hoje{outline:2px solid var(--ink);outline-offset:-2px}
+.gpr{margin-top:10px;font-size:14px;line-height:1.5}.gpr:empty{display:none}.gpr{border-radius:12px;padding:12px;background:var(--chip)}
+.gpr.sim{background:color-mix(in srgb,var(--up) 16%,transparent)}.gpr.cuidado{background:color-mix(in srgb,var(--gold) 28%,transparent)}.gpr.nao{background:color-mix(in srgb,var(--down) 16%,transparent)}
+.gpr div{font-size:13px;color:var(--mut);margin-top:4px}

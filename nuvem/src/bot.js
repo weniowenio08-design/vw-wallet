@@ -1,6 +1,7 @@
 // Cérebro do bot de gastos: entende mensagens do WhatsApp, anota no banco, responde e envia relatórios.
-import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, norm, parseConta, contaDe, contaNome, valorBR, parseExtras, expandir, EXTRAS } from "../../docs/gastos-core.js";
+import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, norm, parseConta, contaDe, contaNome, valorBR, parseExtras, expandir, EXTRAS, ajustaVencimento } from "../../docs/gastos-core.js";
 import { saldoConta, buscaTermo } from "../../docs/gastos-plus.js";
+import { aVencer, prazo } from "../../docs/gastos-agenda.js";
 import { relatorioPdf } from "../../docs/relatorio.js";
 import * as WA from "./wa.js";
 import * as TG from "./tg.js";
@@ -99,6 +100,7 @@ async function saldoAtual(env, user, w) {
   const { results } = await env.DB.prepare("SELECT id,ts,v,tp,w FROM expenses WHERE user=? AND deleted=0 AND w=? AND ts>=?").bind(user.id, w, base.ts).all();
   return saldoConta(results, w, base);
 }
+const pendentes = async (env, userId) => hidrata((await env.DB.prepare("SELECT id,ts,v,c,d,tp,w,x FROM expenses WHERE user=? AND deleted=0 AND x LIKE '%\"pd\":1%'").bind(userId).all()).results);
 const ultimo = (env, user) => env.DB.prepare("SELECT id,ts,v,c,d,tp FROM expenses WHERE user=? AND deleted=0 ORDER BY upd DESC LIMIT 1").bind(user).first();
 
 // ------------------------------------------------------------------ textos
@@ -108,7 +110,7 @@ function resumoTxt(S, conta) {
   if (S.porCat.length) t += "\n\nMaiores categorias:\n" + S.porCat.slice(0, 5).map((c) => `• ${c.n} ${fBRL(c.v)} (${Math.round(c.pct * 100)}%)`).join("\n");
   return t;
 }
-function linhaItem(it, hoje) { const c = catOf(it.c, it.tp); return `${it.tp === "receita" ? "💰" : "✅"}${contaDe(it) === "e" ? "🏢" : ""} ${fBRL(it.v)} · ${c.n}${it.d && it.d !== c.n ? " · " + it.d : ""} · ${rel(it.ts, hoje)}${it.m ? " · 💳 " + it.m : ""}${it.l ? " · 🏷️ " + it.l : ""}${it.dd ? " · dedutível" : ""}`; }
+function linhaItem(it, hoje) { const c = catOf(it.c, it.tp); return `${it.tp === "receita" ? "💰" : it.pd ? "📅" : "✅"}${contaDe(it) === "e" ? "🏢" : ""} ${fBRL(it.v)} · ${c.n}${it.d && it.d !== c.n ? " · " + it.d : ""} · ${rel(it.ts, hoje)}${it.m ? " · 💳 " + it.m : ""}${it.l ? " · 🏷️ " + it.l : ""}${it.dd ? " · dedutível" : ""}${it.pd ? " · a vencer" : ""}`; }
 
 /** Mês citado na frase: "setembro", "mês passado", "09/2026". Padrão: mês atual. */
 export function parseMes(n, hoje) {
@@ -230,6 +232,7 @@ export async function onTelegram(env, upd) {
 }
 
 async function confirmar(env, user, from, itens) {
+  if (itens[0].pd) { const h0 = hojeBRT(); return sendText(env, from, itens.map((it) => linhaItem(it, h0)).join("\n") + `\n🔔 Conta a vencer em ${dBR(itens[0].ts)}. Eu aviso na véspera. Quando pagar, diga *paguei* e o nome da conta.`); }
   const hoje = hojeBRT(), ym = itens[0].ts.slice(0, 7), w = contaDe(itens[0]), saldos = lerSaldos(user), usaContas = w === "e" || user.modo === "e" || Object.keys(saldos).length > 0, S = summarize(await doMes(env, user.id, ym), ym, usaContas ? w : undefined);
   let t = (itens[0].pg ? [itens[0]] : itens).map((it) => linhaItem(it, hoje)).join("\n");
   if (itens[0].pg) t += `\n📆 Parcelado em ${itens[0].pg.n}x de ${fBRL(itens[0].v)}, até ${ymLabel(itens.at(-1).ts.slice(0, 7))}`;
@@ -311,6 +314,17 @@ Para continuar, responda *confirmo* (vale 5 minutos). Qualquer outra mensagem ca
     }
     if (mm[1] || !/^saldo$/.test(n)) return sendText(env, from, "Ainda não sei quanto você tem. Diga, por exemplo: *saldo empresa 100 mil* e *saldo pessoal 20000*.");
   }
+  if (/^(contas a vencer|vencimentos|o que vence|boletos|a pagar|contas a pagar)$/.test(n)) {
+    const lista = aVencer(await pendentes(env, user.id), hoje).slice(0, 12);
+    return sendText(env, from, lista.length ? "📅 *Contas a vencer*\n" + lista.map((x) => `• ${dBR(x.ts).slice(0, 5)} (${prazo(x.dias)}) ${x.d || catOf(x.c).n} ${fBRL(x.v)}`).join("\n") + "\n_Quando pagar, diga *paguei* e o nome da conta._" : "Nenhuma conta a vencer. Para anotar: *boleto luz 180 dia 5*.");
+  }
+  if ((mm = /^(?:paguei|pago|quitei|dar baixa em|baixa)\s+(?:o |a |os |as |no |na )?(.+)$/.exec(n))) {   // só age se existir uma conta a vencer com esse nome; senão é um gasto comum
+    const alvo = aVencer(await pendentes(env, user.id), hoje).find((x) => norm(`${x.d} ${catOf(x.c, x.tp).n}`).includes(mm[1].trim()));
+    if (alvo) {
+      await env.DB.prepare("UPDATE expenses SET x=?, ts=?, upd=? WHERE user=? AND id=?").bind(extrasJson({ ...alvo, pd: null }), hoje, Date.now(), user.id, alvo.id).run();
+      return sendText(env, from, `✅ Baixa dada: ${alvo.d || catOf(alvo.c).n} ${fBRL(alvo.v)}. Entrou nos gastos de hoje.`);
+    }
+  }
   if ((mm = /^quanto (?:eu )?(?:gastei|paguei|foi|deu|gasto)\s+(?:com |em |no |na |nos |nas |de |do |da |pra |para )?(.+)$/.exec(n))) {
     const ym = parseMes(n, hoje);
     let termo = mm[1].replace(/\b(?:este|esse|neste|nesse|no) mes\b|\b(?:mes passado|mes anterior|ultimo mes)\b|\b\d{1,2}\/\d{2,4}\b|\b(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|\b(?:hoje|ate agora|agora)\b/g, " ").replace(/\s+/g, " ").trim();
@@ -328,7 +342,7 @@ Para continuar, responda *confirmo* (vale 5 minutos). Qualquer outra mensagem ca
     return sendText(env, from, resumoTxt(summarize(its, ym))); }
 
   const wlDef = user.modo === "e" ? "e" : "p";
-  const lancar = (linha, padrao = wlDef) => { const c1 = parseConta(linha), x1 = parseExtras(c1.text), p1 = parseMessage(x1.text, hoje); return p1.ok ? expandir(p1, x1, { src: "wa", w: c1.w || padrao }) : null; };
+  const lancar = (linha, padrao = wlDef) => { const c1 = parseConta(linha), x1 = parseExtras(c1.text), p1 = parseMessage(x1.text, hoje); return p1.ok ? expandir(ajustaVencimento(p1, x1, hoje), x1, { src: "wa", w: c1.w || padrao }) : null; };
   const partes = text.split(/\n|;/).map((s) => s.trim()).filter(Boolean);
   if (partes.length >= 2) {   // várias linhas numa mensagem só: "ração 3200 / diesel 450 / vacina 600"
     const w0 = parseConta(partes[0]).w || wlDef;   // "empresa" na primeira linha vale para as outras
@@ -403,6 +417,24 @@ export async function agendados(env, agora = Date.now()) {
       const r = await resumoSemanal(env, u, hojeIso); let canal = "push";
       if (u.tg_chat || (u.wa && u.last_inbound && agora - u.last_inbound < 23 * 3600e3)) { try { await sendText(env, destino(u), r.texto); canal = u.tg_chat ? "telegram" : "whatsapp"; } catch {} }
       await pushUser(env, u, r.push); feitos.push({ user: u.id, semanal: canal });
+    }
+  }
+  // lembrete de contas a vencer: todo dia às 8h (Brasília), uma vez por conta e por dia (hoje, amanhã e atrasadas até 7 dias)
+  if (hora === 8) {
+    const hojeIso = b.toISOString().slice(0, 10), { results: ven } = await env.DB.prepare("SELECT id,user,ts,v,c,d,tp,w,x FROM expenses WHERE deleted=0 AND x LIKE '%\"pd\":1%' AND ts<=? AND ts>=?").bind(addDays(hojeIso, 1), addDays(hojeIso, -7)).all();
+    const porUser = new Map();
+    for (const it of hidrata(ven)) {
+      if (!it.pd) continue;
+      const ins = await env.DB.prepare("INSERT OR IGNORE INTO seen(id,t) VALUES(?,?)").bind(`venc:${it.id}:${hojeIso}`, agora).run();
+      if (ins.meta.changes) { if (!porUser.has(it.user)) porUser.set(it.user, []); porUser.get(it.user).push(it); }
+    }
+    for (const [uid, its] of porUser) {
+      const u = await env.DB.prepare("SELECT * FROM users WHERE id=?").bind(uid).first(); if (!u) continue;
+      const lista = aVencer(its, hojeIso), linha = (x) => `${x.d || catOf(x.c).n} ${fBRL(x.v)} (${prazo(x.dias)})`;
+      let canal = "push";
+      if (u.tg_chat || (u.wa && u.last_inbound && agora - u.last_inbound < 23 * 3600e3)) { try { await sendText(env, destino(u), "🔔 *Contas a vencer*\n" + lista.map((x) => "• " + linha(x)).join("\n") + "\n_Diga *paguei* e o nome da conta para dar baixa._"); canal = u.tg_chat ? "telegram" : "whatsapp"; } catch {} }
+      await pushUser(env, u, { title: "Contas a vencer", body: lista.slice(0, 3).map(linha).join(" · "), tag: "vencimentos" });
+      feitos.push({ user: uid, vencimentos: lista.length, canal });
     }
   }
   await env.DB.batch([env.DB.prepare("DELETE FROM seen WHERE t<?").bind(agora - 3 * DAY), env.DB.prepare("DELETE FROM links WHERE exp<?").bind(agora)]);

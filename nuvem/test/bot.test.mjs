@@ -172,6 +172,21 @@ test("bot: parcelas, meio, lote, várias linhas e consulta 'quanto gastei com'",
   const { body } = await api("/api/sync", { since: 0, items: [] }); assert.ok(body.items.some((i) => i.m === "Nubank" && i.pg?.n === 6));
 });
 
+test("contas a vencer: anota, lista, lembra às 8h, dá baixa; 'paguei' de gasto comum segue normal", async () => {
+  await vincula();
+  await zap(txt("boleto luz 180 dia 30")); assert.match(ultima(), /Conta a vencer em 30\/10\/2026|a vencer/);
+  assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE x LIKE '%\"pd\":1%'")[0].n, 1);
+  await zap(txt("resumo")); assert.doesNotMatch(ultima(), /180,00/);   // não conta como gasto ainda
+  await zap(txt("contas a vencer")); assert.match(ultima(), /luz[\s\S]*180,00/i);
+  const dia = linhas("SELECT ts FROM expenses WHERE x LIKE '%\"pd\":1%'")[0].ts, hora8 = Date.parse(dia + "T11:00:00Z") - 864e5;   // 08h de Brasília, 1 dia antes
+  saidas.length = 0; await agendados(env, hora8); assert.match(ultima() || "", /Contas a vencer[\s\S]*amanhã/);
+  saidas.length = 0; await agendados(env, hora8); assert.equal(saidas.length, 0);   // não repete no mesmo dia
+  await zap(txt("paguei 50 no uber")); assert.match(ultima(), /50,00/); assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE x LIKE '%\"pd\":1%'")[0].n, 1);
+  await zap(txt("paguei a luz")); assert.match(ultima(), /Baixa dada/);
+  assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE x LIKE '%\"pd\":1%'")[0].n, 0);
+  await zap(txt("contas a vencer")); assert.match(ultima(), /Nenhuma conta a vencer/);
+});
+
 test("repetição do mesmo id é ignorada", async () => {
   await vincula();
   const raw = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ id: "dup1", from: WA, ...txt("gastei 9 no cafe") }] } }] }] });
