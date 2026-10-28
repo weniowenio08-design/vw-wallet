@@ -4,7 +4,7 @@
 // - restaura o backup depois de reinstalar o app
 export function makeDados(c) {
   const { store, toast } = c;
-  const SKIP = new Set(["snap", "hiddenAt", "vistas", "sinaisVistos"]);
+  const SKIP = new Set(["snap", "hiddenAt", "vistas", "sinaisVistos", "nuvem_token", "convite", "gastos_sync", "gastos_pend", "push_on"]); // segredos e estado de sincronização ficam fora do arquivo de backup
   const b64 = (u8) => { let s = ""; u8.forEach((x) => (s += String.fromCharCode(x))); return btoa(s); };
   const unb64 = (s) => Uint8Array.from(atob(s), (ch) => ch.charCodeAt(0));
   const dayStr = () => new Date().toISOString().slice(0, 10);

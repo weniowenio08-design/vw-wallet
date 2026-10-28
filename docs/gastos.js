@@ -58,9 +58,9 @@ export function makeGastos(c) {
   function vGastos() {
     const L = list(), S = summarize(L, st.ym), hoje = hojeBRT().slice(0, 7);
     const kp = (t, v, cls = "") => `<div class="stat"><small>${t}</small><b class="num ${cls}">${fBRL(v)}</b></div>`;
-    let h = `<div class="mnav"><button class="icbtn" data-gm="-1" aria-label="Mês anterior">${ic("back")}</button><div class="mlabel">${cap(ymLabel(st.ym))}</div><button class="icbtn flip" data-gm="1" aria-label="Próximo mês" ${st.ym >= hoje ? "disabled" : ""}>${ic("back")}</button></div>`;
+    let h = `<div class="gtop"><button class="icbtn" data-go="#/hoje" aria-label="Voltar">${ic("back")}</button><div class="gtit">Gastos</div></div><div class="mnav"><button class="icbtn" data-gm="-1" aria-label="Mês anterior">${ic("back")}</button><div class="mlabel">${cap(ymLabel(st.ym))}</div><button class="icbtn flip" data-gm="1" aria-label="Próximo mês" ${st.ym >= hoje ? "disabled" : ""}>${ic("back")}</button></div>`;
     h += `<div class="grid2" style="margin-bottom:10px">${kp("Receitas", S.receitas, "up")}${kp("Gastos", S.gastos)}${kp("Investido", S.investido)}${kp("Saldo", S.saldo, S.saldo >= 0 ? "up" : "down")}</div>`;
-    h += secTitle(`${ic("plus", "sm")} Anotar`) + `<div class="card"><label style="margin-top:0">Escreva como falaria</label><div class="gq"><input id="gq" placeholder="gastei 45 no mercado" autocomplete="off" enterkeyhint="send"><button class="btn sm" id="gq-ok">Anotar</button></div><div class="mut" style="font-size:12.5px;margin:6px 0 10px">Exemplos: "uber 23,50 ontem", "+1500 salário", "dia 12 farmácia 37".</div>${formCard()}</div>`;
+    h += `<div class="mut" style="font-size:12.5px;line-height:1.5;margin:0 4px 6px">Escreva na barra de baixo, como falaria: "uber 23,50 ontem", "+1500 salário", "dia 12 farmácia 37".</div>` + secTitle(`${ic("plus", "sm")} Anotar com os campos`) + `<div class="card">${formCard()}</div>`;
     h += secTitle(`${ic("chart", "sm")} Para onde foi o dinheiro`) + `<div class="card">` + (S.porCat.length ? S.porCat.map((x) => `<div class="gcat"><div class="gc-h"><span><i class="gdot" style="background:${x.cor}"></i>${esc(x.n)}</span><b class="num">${fBRL(x.v)} <small class="mut">${Math.round(x.pct * 100)}%</small></b></div><div class="bar"><i style="width:${Math.max(2, x.pct * 100)}%;background:${x.cor}"></i></div></div>`).join("") : `<div class="empty">Nada anotado em ${esc(ymLabel(st.ym))}.</div>`) + `</div>`;
     h += secTitle(`${ic("calendar", "sm")} Lançamentos (${S.itens.length})`) + `<div class="card">` + (S.itens.length ? (st.all ? S.itens : S.itens.slice(0, 30)).map((x) => `<div class="gl"><div class="gl-m"><div class="gl-d">${esc(x.d || catOf(x.c, x.tp).n)}</div><div class="mut gl-s">${dBR(x.ts).slice(0, 5)} · ${esc(catOf(x.c, x.tp).n)}${x.src === "wa" ? " · WhatsApp" : ""}</div></div><div class="num gl-v ${x.tp === "receita" ? "up" : ""}">${x.tp === "receita" ? "+ " : ""}${fBRL(x.v)}</div><button class="icbtn" data-gedit="${x.id}" aria-label="Editar">${ic("edit", "sm")}</button><button class="icbtn" data-gdel="${x.id}" aria-label="Excluir">${ic("trash", "sm")}</button></div>`).join("") + (S.itens.length > 30 && !st.all ? `<button class="btn ghost" id="g-all">Ver todos (${S.itens.length})</button>` : "") : `<div class="empty">Sem lançamentos neste mês.</div>`) + `</div>`;
     h += secTitle(`${ic("down", "sm")} Relatório e planilha`) + `<div class="card"><button class="btn" id="g-pdf" style="margin-top:0">Relatório de ${esc(ymLabel(st.ym))} (PDF)</button><button class="btn ghost" id="g-csv">Planilha do mês (CSV, abre no Excel)</button><button class="btn ghost" id="g-csv-all">Planilha com tudo</button>${st.status?.linked ? '<button class="btn ghost" id="g-send">Enviar o relatório para o meu WhatsApp</button>' : ""}</div>`;
@@ -78,6 +78,11 @@ export function makeGastos(c) {
 
   function bindGastos(render) {
     rerender = render;
+    // barra de digitação fixa embaixo (como num chat): escreva o gasto e envie
+    document.getElementById("gbar")?.remove();
+    const bar = document.createElement("div"); bar.id = "gbar"; bar.className = "gbar";
+    bar.innerHTML = '<input id="gq" placeholder="gastei 45 no mercado" autocomplete="off" enterkeyhint="send" aria-label="Anotar gasto"><button class="btn sm" id="gq-ok">Anotar</button>';
+    document.body.appendChild(bar);
     const $ = (s) => document.querySelector(s);
     if (st.cloud === null && !st.loading) {
       st.loading = true;

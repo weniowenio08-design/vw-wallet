@@ -13,7 +13,7 @@ export function makeNuvem({ store, toast }) {
   }
   async function api(path, body, raw) {
     const c = await config(); if (!c.api) throw new Error("sem_api");
-    const r = await fetch(c.api + path, { method: body ? "POST" : "GET", headers: { Authorization: "Bearer " + token(), ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    const r = await fetch(c.api + path, { method: body ? "POST" : "GET", headers: { Authorization: "Bearer " + token(), ...(store.get("convite", "") ? { "X-Invite": store.get("convite", "") } : {}), ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
     if (!r.ok) { let m = ""; try { m = (await r.json()).erro || ""; } catch {} const e = new Error(m || "http_" + r.status); e.status = r.status; throw e; }
     return raw ? r : r.json();
   }
@@ -22,7 +22,7 @@ export function makeNuvem({ store, toast }) {
   /** Junta o que está no aparelho com o que o bot anotou. Devolve a lista completa. */
   async function sync(list) {
     const since = store.get("gastos_sync", 0), pend = store.get("gastos_pend", []);
-    const send = list.filter((x) => pend.includes(x.id));
+    const send = since === 0 ? list : list.filter((x) => pend.includes(x.id)); // primeira vez neste servidor (ex.: depois de restaurar backup): envia tudo
     const r = await api("/api/sync", { since, items: send });
     const byId = new Map(list.map((x) => [x.id, x]));
     for (const it of r.items) { const c = cleanItem(it); if (c && !pend.includes(c.id)) byId.set(c.id, c); }

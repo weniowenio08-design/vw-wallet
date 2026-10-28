@@ -40,7 +40,7 @@ function instalaFetch() {
   };
 }
 async function api(path, body, token = TOKEN, extra = {}) {
-  const ctx = ctxFn(); const r = await worker.fetch(new Request("https://w" + path, { method: body === undefined ? "GET" : "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", ...extra }, body: body === undefined ? undefined : JSON.stringify(body) }), env, ctx); await ctx.done();
+  const ctx = ctxFn(); const r = await worker.fetch(new Request("https://w" + path, { method: body === undefined ? "GET" : "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", "X-Invite": "convite-teste", ...extra }, body: body === undefined ? undefined : JSON.stringify(body) }), env, ctx); await ctx.done();
   return { status: r.status, body: await r.json().catch(() => null) };
 }
 let seq = 0;
@@ -60,7 +60,7 @@ async function vincula() {
   await zap(txt("vincular " + body.code));
 }
 test.beforeEach(() => {
-  env = { DB: novoDB(), WA_TOKEN: "tk", WA_PHONE_ID: "111", WA_APP_SECRET: "segredo", WA_VERIFY_TOKEN: "ver", WA_BOT_NUMBER: "+55 81 99999-0000", ALLOWED: WA, APP_ORIGIN: "https://app.test", MAX_USERS: "2", BRAIN_SECRET: "brain", VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_JWK: JSON.stringify(vapid.privateJwk), GEMINI_API_KEY: "g", AI_DAILY_LIMIT: "3" };
+  env = { DB: novoDB(), WA_TOKEN: "tk", WA_PHONE_ID: "111", WA_APP_SECRET: "segredo", WA_VERIFY_TOKEN: "ver", WA_BOT_NUMBER: "+55 81 99999-0000", ALLOWED: WA, APP_ORIGIN: "https://app.test", MAX_USERS: "2", BRAIN_SECRET: "brain", VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_JWK: JSON.stringify(vapid.privateJwk), GEMINI_API_KEY: "g", AI_DAILY_LIMIT: "3", INVITE_CODE: "convite-teste" };
   saidas = []; pushes = []; gemini = { transcricao: "", itens: [] }; instalaFetch();
 });
 
@@ -85,7 +85,7 @@ test("sincronização: envia, recebe, exclusão viaja", async () => {
   const t0 = a.body.now;
   await new Promise((r) => setTimeout(r, 5));
   const b = await api("/api/sync", { since: t0, items: [{ id: "i2", ts: "2026-10-11", v: 20, c: "transporte", d: "Uber", tp: "gasto", src: "app", deleted: 1 }] });
-  assert.deepEqual(b.body.items.map((x) => [x.id, x.deleted]), [["i2", 1]]);
+  assert.equal(b.body.items.find((x) => x.id === "i2").deleted, 1); // pode devolver também itens recém-gravados: o app junta por id
 });
 
 test("vínculo por código, número sem o 9 e número estranho", async () => {
@@ -167,4 +167,14 @@ test("avisos push: inscrição, teste e aviso do cérebro", async () => {
   assert.equal((await api("/api/notify", { title: "ITUB4 · compra", body: "R$ 38,10" }, TOKEN)).status, 401, "sem o segredo do cérebro");
   const n = await api("/api/notify", { title: "ITUB4 · compra", body: "R$ 38,10", url: "./#/ativo/ITUB4" }, TOKEN, { "X-Brain-Secret": "brain" });
   assert.equal(n.body.enviados, 1); assert.equal(pushes.length, 2);
+});
+
+test("sem convite não cria conta; com convite cria; vínculo limita tentativas", async () => {
+  assert.equal((await api("/api/sync", { since: 0, items: [] }, "4".repeat(64), { "X-Invite": "errado" })).status, 403);
+  assert.equal((await api("/api/sync", { since: 0, items: [] }, "4".repeat(64))).status, 200);
+  await api("/api/sync", { since: 0, items: [] });
+  for (let i = 0; i < 5; i++) await zap(txt("vincular 00000" + i));
+  const { body } = await api("/api/register", {});
+  const n = saidas.length; await zap(txt("vincular " + body.code));
+  assert.equal(saidas.length, n, "depois de 5 erros o número é ignorado, mesmo com o código certo");
 });

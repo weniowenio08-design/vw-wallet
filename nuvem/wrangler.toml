@@ -14,7 +14,7 @@ crons = ["0 * * * *"]
 
 [vars]
 APP_ORIGIN = "https://weniowenio08-design.github.io"
-MAX_USERS = "5"
+MAX_USERS = "10"
 VAPID_SUBJECT = "https://weniowenio08-design.github.io/vw-wallet/"
 WA_TEMPLATE_REPORT = "relatorio_mensal"
 AI_DAILY_LIMIT = "40"

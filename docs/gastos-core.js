@@ -132,5 +132,5 @@ export function cleanItem(x) {
   if (!isFinite(v) || v <= 0 || v > 1e9 || !/^\d{4}-\d{2}-\d{2}$/.test(ts)) return null;
   const tp = x.tp === "receita" ? "receita" : "gasto";
   const cs = (tp === "receita" ? CATS_REC : CATS).map((c) => c.k);
-  return { id: String(x.id || newId()).slice(0, 32), ts, v: Math.round(v * 100) / 100, c: cs.includes(x.c) ? x.c : tp === "receita" ? "outras_receitas" : "outros", d: String(x.d ?? "").slice(0, 120), tp, src: x.src === "wa" ? "wa" : "app", deleted: x.deleted ? 1 : 0 };
+  return { id: (String(x.id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) || newId()), ts, v: Math.round(v * 100) / 100, c: cs.includes(x.c) ? x.c : tp === "receita" ? "outras_receitas" : "outros", d: String(x.d ?? "").slice(0, 120), tp, src: x.src === "wa" ? "wa" : "app", deleted: x.deleted ? 1 : 0 };
 }

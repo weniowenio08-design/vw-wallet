@@ -6,7 +6,7 @@ export class HttpError extends Error { constructor(status, msg) { super(msg); th
 /** CORS: só o endereço do app (APP_ORIGIN) pode chamar a API pelo navegador. */
 export function corsHeaders(req, env) {
   const o = req.headers.get("Origin");
-  if (o && env.APP_ORIGIN && o === env.APP_ORIGIN) return { "Access-Control-Allow-Origin": o, "Access-Control-Allow-Headers": "Authorization, Content-Type", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Max-Age": "86400", Vary: "Origin" };
+  if (o && env.APP_ORIGIN && o === env.APP_ORIGIN) return { "Access-Control-Allow-Origin": o, "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Invite", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Max-Age": "86400", Vary: "Origin" };
   return { Vary: "Origin" };
 }
 

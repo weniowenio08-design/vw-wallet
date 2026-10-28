@@ -833,7 +833,7 @@ function bindShare() {
   bindInstall(); ntfLinks();
   $("#ntfy")?.addEventListener("change", ntfLinks);
   $("#sh-app")?.addEventListener("click", async () => {
-    const url = APP_URL(), text = "Conheça o Uiraçu: acompanha o mercado e mostra a hora de comprar e de vender, de acordo com o seu perfil. Gratuito, sem cadastro; seus dados ficam só no seu celular.";
+    const conv = store.get("convite", ""), url = APP_URL() + (conv ? "?c=" + conv : ""), text = "Conheça o Uiraçu: acompanha o mercado e mostra a hora de comprar e de vender, de acordo com o seu perfil. Gratuito, sem cadastro; seus dados ficam só no seu celular.";
     try { if (navigator.share) await navigator.share({ title: "Uiraçu", text, url }); else { await navigator.clipboard.writeText(text + "\n" + url); toast("Texto e link copiados."); } } catch {}
   });
   document.querySelectorAll("[data-zoom]").forEach((b) => b.addEventListener("click", () => { store.set("zoom", +b.dataset.zoom); applyZoom(); document.querySelectorAll("[data-zoom]").forEach((x) => x.classList.toggle("on", x === b)); }));
@@ -843,7 +843,8 @@ function applyZoom() { const z = +store.get("zoom", 1); document.documentElement
 // convite por link: .../vw-wallet/?av=TOPICO configura os avisos sozinho (só se ainda não houver tópico)
 function readInvite() {
   try {
-    const u = new URL(location.href), av = u.searchParams.get("av");
+    const u = new URL(location.href), av = u.searchParams.get("av"), cv = u.searchParams.get("c");
+    if (cv && /^[A-Za-z0-9_-]{12,64}$/.test(cv)) { store.set("convite", cv); u.searchParams.delete("c"); history.replaceState(null, "", u.pathname + u.search + u.hash); toast("Convite guardado."); }
     if (av && /^[A-Za-z0-9_-]{16,64}$/.test(av)) { if (!store.get("ntfy", "")) store.set("ntfy", av); u.searchParams.delete("av"); history.replaceState(null, "", u.pathname + u.search + u.hash); toast("Avisos configurados neste celular."); }
   } catch {}
 }
@@ -851,9 +852,11 @@ function readInvite() {
 // ------------------------------------------------------------------ roteador
 async function render() {
   const view = $("#view"), hash = location.hash || "#/hoje", [, route, arg] = hash.split("/");
+  document.body.classList.toggle("modo-gastos", route === "gastos"); $("#btn-gastos")?.classList.toggle("on", route === "gastos");
+  if (route !== "gastos") document.getElementById("gbar")?.remove();
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (route === "ativo" || route === "indice" ? "hoje" : route === "perfil" || route === "recomendar" ? "carteira" : route === "ferramentas" || route === "aprender" ? "mais" : route)));
   if (!D.summary) { view.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>'; return; }
-  const s = D.summary; $("#upd").textContent = `olho de harpia · ${ago(s.updated)}`;
+  const s = D.summary; $("#upd").textContent = `${ago(s.updated)}`;
   const rg = $("#regime"); rg.className = "pill " + s.regime.level; rg.textContent = REGIME[s.regime.level].p;
   if (route === "ativo") {
     view.innerHTML = await vAtivo(arg); hydrate(view); drawChart(arg);
@@ -908,8 +911,10 @@ function boot() {
   migrate(); applyZoom(); readInvite(); X.initLock(); dados.persist();
   // logos que não existem somem sem precisar de código dentro do HTML (permite política de segurança estrita)
   document.addEventListener("error", (e) => { if (e.target?.tagName === "IMG" && e.target.closest?.(".logo")) e.target.remove(); }, true);
-  $("#tabs").innerHTML = [["hoje", "home", "Hoje"], ["mercado", "chart", "Mercado"], ["noticias", "news", "Notícias"], ["carteira", "wallet", "Carteira"], ["gastos", "receipt", "Gastos"], ["mais", "grid", "Mais"]].map(([k, i, t], n) => `<button data-tab="${k}" class="${n === 0 ? "on" : ""}">${ic(i)}<span>${t}</span><span class="pip"></span></button>`).join("");
+  $("#tabs").innerHTML = [["hoje", "home", "Hoje"], ["mercado", "chart", "Mercado"], ["noticias", "news", "Notícias"], ["carteira", "wallet", "Carteira"], ["mais", "grid", "Mais"]].map(([k, i, t], n) => `<button data-tab="${k}" class="${n === 0 ? "on" : ""}">${ic(i)}<span>${t}</span><span class="pip"></span></button>`).join("");
   $("#btn-search").innerHTML = ic("search");
+  $("#btn-gastos").innerHTML = ic("receipt");
+  $("#btn-gastos").addEventListener("click", () => { location.hash = location.hash === "#/gastos" ? "#/hoje" : "#/gastos"; });
   $("#btn-tema").innerHTML = ic(temaEscuro() ? "sun" : "moon");
   $("#btn-tema").addEventListener("click", () => { store.set("tema", temaEscuro() ? "claro" : "escuro"); aplicaTema(); if (location.hash === "#/mais") render(); });
   $("#s-back").innerHTML = ic("back");

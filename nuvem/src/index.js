@@ -19,6 +19,7 @@ async function auth(req, env, create) {
   const h = await sha256hex(t);
   let u = await env.DB.prepare("SELECT * FROM users WHERE token_hash=?").bind(h).first();
   if (!u && create) {
+    if (env.INVITE_CODE && !safeEq(req.headers.get("X-Invite") || "", env.INVITE_CODE)) throw new HttpError(403, "convite necessário");
     const n = (await env.DB.prepare("SELECT COUNT(*) AS n FROM users").first()).n;
     if (n >= +(env.MAX_USERS || 5)) throw new HttpError(403, "limite de usuários");
     const id = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");

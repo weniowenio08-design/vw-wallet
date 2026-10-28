@@ -36,7 +36,9 @@ self.addEventListener("push", (e) => {
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const url = new URL((e.notification.data && e.notification.data.url) || "./", self.registration.scope).href;
+  let url = new URL((e.notification.data && e.notification.data.url) || "./", self.registration.scope);
+  if (url.origin !== self.location.origin) url = new URL("./", self.registration.scope); // só abre páginas do próprio app
+  url = url.href;
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => {
     const c = cs[0]; if (c) { c.navigate(url).catch(() => {}); return c.focus(); }
     return self.clients.openWindow(url);

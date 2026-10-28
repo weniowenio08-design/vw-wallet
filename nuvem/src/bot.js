@@ -88,7 +88,11 @@ const permitido = (env, wa) => permitidos(env).includes(wa);
 
 async function vincular(env, code, wa, from) {
   const lista = permitidos(env); if (lista.length && !lista.includes(wa)) return;
+  // no máximo 5 tentativas de código por número a cada hora (impede adivinhar os 6 dígitos)
+  const falhas = (await env.DB.prepare("SELECT COUNT(*) AS n FROM seen WHERE id LIKE ? AND t>?").bind(`v:${wa}:%`, Date.now() - 3600e3).first()).n;
+  if (falhas >= 5) return;
   const l = await env.DB.prepare("SELECT user FROM links WHERE code=? AND exp>?").bind(code, Date.now()).first();
+  if (!l) await env.DB.prepare("INSERT OR IGNORE INTO seen(id,t) VALUES(?,?)").bind(`v:${wa}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, Date.now()).run();
   if (!l) return sendText(env, from, "Esse código não vale mais. Abra o app, aba Gastos, e toque em *Conectar ao WhatsApp* para gerar outro.");
   await env.DB.batch([
     env.DB.prepare("UPDATE users SET wa=NULL, wa_raw=NULL WHERE wa=?").bind(wa),
