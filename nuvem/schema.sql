@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS users (
   last_inbound INTEGER,                     -- última mensagem do usuário (janela de 24 h do WhatsApp)
   pending_report TEXT,                      -- "AAAA-MM": relatório que espera uma resposta para ser entregue
   push TEXT NOT NULL DEFAULT '[]',          -- inscrições de aviso push (JSON)
-  ai_day TEXT, ai_n INTEGER NOT NULL DEFAULT 0
+  ai_day TEXT, ai_n INTEGER NOT NULL DEFAULT 0,
+  weekly_on INTEGER NOT NULL DEFAULT 0,     -- resumo semanal (domingo, 18h de Brasília)
+  last_weekly TEXT                          -- data do último resumo enviado
 );
 CREATE TABLE IF NOT EXISTS expenses (
   user TEXT NOT NULL, id TEXT NOT NULL,

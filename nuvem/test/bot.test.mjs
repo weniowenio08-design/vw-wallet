@@ -178,3 +178,19 @@ test("sem convite não cria conta; com convite cria; vínculo limita tentativas"
   const n = saidas.length; await zap(txt("vincular " + body.code));
   assert.equal(saidas.length, n, "depois de 5 erros o número é ignorado, mesmo com o código certo");
 });
+
+test("resumo semanal: domingo 18h por WhatsApp (dentro da janela) e por aviso", async () => {
+  await vincula(); await zap(txt("mercado 10"));
+  const dom = Date.UTC(2026, 10, 1, 21, 0, 0); // domingo 01/11/2026, 18h em Brasília
+  const u = env.DB.raw.prepare("SELECT id FROM users").get().id;
+  env.DB.raw.prepare("DELETE FROM expenses").run();
+  const ins = env.DB.raw.prepare("INSERT INTO expenses(user,id,ts,v,c,d,tp,src,deleted,upd) VALUES(?,?,?,?,?,?,?,?,0,?)");
+  ins.run(u, "s1", "2026-10-30", 200, "mercado", "Feira", "gasto", "wa", 1); ins.run(u, "s2", "2026-10-31", 50, "transporte", "Uber", "gasto", "wa", 1); ins.run(u, "s3", "2026-10-25", 100, "mercado", "Feira", "gasto", "wa", 1);
+  await api("/api/settings", { weekly_on: 1 });
+  env.DB.raw.prepare("UPDATE users SET last_inbound=?").run(dom - 3600e3);
+  saidas.length = 0; const r = await agendados(env, dom);
+  assert.equal(r.length, 1); assert.equal(r[0].semanal, "whatsapp");
+  assert.match(ultima(), /Resumo da semana[\s\S]*Gastos: R\$\s250,00[\s\S]*150%/);
+  assert.deepEqual(await agendados(env, dom), [], "não repete no mesmo domingo");
+  assert.equal((await api("/api/status")).body.settings.weekly_on, 1);
+});

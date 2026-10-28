@@ -60,7 +60,7 @@ async function api(req, env, ctx, url) {
   if (p === "/api/status") {
     if (!user) return json({ linked: false, settings: null, push: 0, ia: iaLigada(env), now: Date.now() });
     let subs = []; try { subs = JSON.parse(user.push || "[]"); } catch {}
-    return json({ linked: !!user.wa, wa: maskWa(user.wa), settings: { report_on: user.report_on, report_day: user.report_day, report_hour: user.report_hour }, push: subs.length, ia: iaLigada(env), now: Date.now() });
+    return json({ linked: !!user.wa, wa: maskWa(user.wa), settings: { report_on: user.report_on, report_day: user.report_day, report_hour: user.report_hour, weekly_on: user.weekly_on }, push: subs.length, ia: iaLigada(env), now: Date.now() });
   }
   if (p === "/api/register" && req.method === "POST") {
     const code = randCode();
@@ -75,8 +75,12 @@ async function api(req, env, ctx, url) {
     return json({ now: results.length === 2000 ? results[results.length - 1].upd : now, items: results });
   }
   if (p === "/api/settings" && req.method === "POST") {
-    const b = await readJson(req), c = (v, a, z, d) => { v = Math.round(+v); return isFinite(v) ? Math.min(z, Math.max(a, v)) : d; };
-    await env.DB.prepare("UPDATE users SET report_on=?, report_day=?, report_hour=? WHERE id=?").bind(b.report_on ? 1 : 0, c(b.report_day, 1, 31, 30), c(b.report_hour, 6, 22, 8), user.id).run();
+    // só muda o que veio no pedido (o app manda os campos que alterou)
+    const b = await readJson(req), c = (v, lo, hi, d) => { v = Math.round(+v); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+    const on = b.report_on === undefined ? user.report_on : b.report_on ? 1 : 0;
+    const dia = b.report_day === undefined ? user.report_day : c(b.report_day, 1, 31, 30), hora = b.report_hour === undefined ? user.report_hour : c(b.report_hour, 6, 22, 8);
+    const sem = b.weekly_on === undefined ? user.weekly_on : b.weekly_on ? 1 : 0;
+    await env.DB.prepare("UPDATE users SET report_on=?, report_day=?, report_hour=?, weekly_on=? WHERE id=?").bind(on, dia, hora, sem, user.id).run();
     return json({ ok: true });
   }
   if (p === "/api/push/subscribe" && req.method === "POST") {

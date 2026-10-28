@@ -258,3 +258,8 @@ body.modo-gastos{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
 .gbar input{flex:1}.gbar .btn{flex:none}
 .gtop{display:flex;align-items:center;gap:10px;margin:2px 0 8px}
 .gtit{font-family:"Bricolage",system-ui,sans-serif;font-weight:700;font-size:26px;letter-spacing:-.01em}
+
+/* ---- Gastos: recursos extras ---- */
+.gdelta{font-size:12px;margin-top:3px}
+.gfoto{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px}
+.gfoto img{max-width:100%;max-height:78vh;border-radius:12px}.gfoto .btn{width:auto;padding:10px 28px}

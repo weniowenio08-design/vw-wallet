@@ -190,6 +190,23 @@ async function midia(env, user, from, id, kind) {
   await confirmar(env, user, from, r.itens);
 }
 
+// ------------------------------------------------------------------ resumo semanal
+/** Semana = os 7 dias até hoje; compara com os 7 dias anteriores. Investimentos não entram em "gastos". */
+export async function resumoSemanal(env, user, hoje) {
+  const ini = addDays(hoje, -6), iniAnt = addDays(hoje, -13), fimAnt = addDays(hoje, -7);
+  const { results } = await env.DB.prepare("SELECT id,ts,v,c,d,tp FROM expenses WHERE user=? AND deleted=0 AND ts>=? AND ts<=?").bind(user.id, iniAnt, hoje).all();
+  const gasto = (r) => r.tp !== "receita" && r.c !== "investimento";
+  const esta = results.filter((r) => r.ts >= ini && gasto(r)), ant = results.filter((r) => r.ts >= iniAnt && r.ts <= fimAnt && gasto(r));
+  const soma = (l) => Math.round(l.reduce((s, r) => s + r.v, 0) * 100) / 100, g = soma(esta), a = soma(ant);
+  const porCat = {}; for (const r of esta) porCat[r.c] = (porCat[r.c] || 0) + r.v;
+  const top = Object.entries(porCat).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([k, v]) => `${catOf(k).n} ${fBRL(v)}`);
+  const var_ = a > 0 ? Math.round(((g - a) / a) * 100) : null;
+  const ym = hoje.slice(0, 7), S = summarize(await doMes(env, user.id, ym), ym);
+  const frase = var_ == null ? "" : var_ === 0 ? " (igual à semana passada)" : ` (${Math.abs(var_)}% ${var_ > 0 ? "a mais" : "a menos"} que na semana passada)`;
+  const texto = !esta.length ? "📅 *Resumo da semana*\nNenhum gasto anotado nos últimos 7 dias." : `📅 *Resumo da semana*\nGastos: ${fBRL(g)}${frase}` + (top.length ? `\nMaiores: ${top.join(" · ")}` : "") + `\n\nNo mês: gastos ${fBRL(S.gastos)} · saldo ${fBRL(S.saldo)}`;
+  return { texto, push: { title: "Resumo da semana", body: !esta.length ? "Nenhum gasto anotado nos últimos 7 dias." : `Você gastou ${fBRL(g)}${frase}.`, tag: "semana", url: "./#/gastos" }, gasto: g };
+}
+
 // ------------------------------------------------------------------ agendador (a cada hora)
 export async function agendados(env, agora = Date.now()) {
   const b = new Date(agora - BRT), dia = b.getUTCDate(), hora = b.getUTCHours(), ymNow = b.toISOString().slice(0, 7);
@@ -209,6 +226,16 @@ export async function agendados(env, agora = Date.now()) {
     }
     await pushUser(env, u, { title: `Relatório de ${ymLabel(ym).split(" ")[0]}`, body: modo === "janela" ? "Enviei o PDF e a planilha no seu WhatsApp." : "Está pronto. Responda qualquer coisa ao bot no WhatsApp para receber o PDF.", tag: "relatorio", url: "./#/gastos" });
     feitos.push({ user: u.id, ym, modo });
+  }
+  // resumo semanal: domingo, 18h (Brasília)
+  if (b.getUTCDay() === 0 && hora === 18) {
+    const hojeIso = b.toISOString().slice(0, 10), { results: sem } = await env.DB.prepare("SELECT * FROM users WHERE weekly_on=1 AND (last_weekly IS NULL OR last_weekly!=?)").bind(hojeIso).all();
+    for (const u of sem) {
+      await env.DB.prepare("UPDATE users SET last_weekly=? WHERE id=?").bind(hojeIso, u.id).run();
+      const r = await resumoSemanal(env, u, hojeIso); let canal = "push";
+      if (u.wa && u.last_inbound && agora - u.last_inbound < 23 * 3600e3) { try { await sendText(env, u.wa_raw || u.wa, r.texto); canal = "whatsapp"; } catch {} }
+      await pushUser(env, u, r.push); feitos.push({ user: u.id, semanal: canal });
+    }
   }
   await env.DB.batch([env.DB.prepare("DELETE FROM seen WHERE t<?").bind(agora - 3 * DAY), env.DB.prepare("DELETE FROM links WHERE exp<?").bind(agora)]);
   return feitos;
