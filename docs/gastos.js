@@ -1,17 +1,19 @@
 // Aba "Gastos": anotar (frase livre ou campos), resumo do mês, relatório em PDF, planilha CSV e o assessor no WhatsApp.
 // Tudo fica no aparelho (localStorage). Se a nuvem estiver ligada (config.json), os gastos que o bot anota no WhatsApp chegam aqui.
-import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, num as numCore } from "./gastos-core.js";
+import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, num as numCore, contaDe, contaNome, parseConta, valorBR } from "./gastos-core.js";
 import { relatorioPdf } from "./relatorio.js";
-import { serie, comparaCategorias, statusLimite, alertasNovos, fixosPendentes, progressoMeta, sobraDoMes, filtrar } from "./gastos-plus.js";
+import { serie, comparaCategorias, statusLimite, alertasNovos, fixosPendentes, progressoMeta, sobraDoMes, filtrar, saldoConta } from "./gastos-plus.js";
 import { makeNuvem } from "./nuvem.js";
 
 export function makeGastos(c) {
   const { store, esc, ic, secTitle, toast } = c;
   const N = makeNuvem({ store, toast });
-  const st = { ym: hojeBRT().slice(0, 7), tp: "gasto", editId: null, cloud: null, status: null, code: null, all: false, loading: false, q: "", cat: "", todo: false, fotosOk: false };
+  const st = { conta: store.get("gastos_conta", "t"), ym: hojeBRT().slice(0, 7), tp: "gasto", editId: null, cloud: null, status: null, code: null, all: false, loading: false, q: "", cat: "", todo: false, fotosOk: false };
   const fotos = new Set();
   const MES3 = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   const list = () => store.get("gastos", []);
+  const vis = () => (st.conta === "t" ? list() : list().filter((x) => contaDe(x) === st.conta));   // o que a tela mostra, conforme o seletor de conta
+  const saldos = () => store.get("gastos_saldos", {});
   const save = (l) => store.set("gastos", l);
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   const cfg = () => ({ on: false, day: 30, hour: 8, ...store.get("gastos_cfg", {}) });
@@ -40,7 +42,7 @@ export function makeGastos(c) {
     try { if (typeof Notification !== "undefined" && Notification.permission === "granted") (await navigator.serviceWorker.getRegistration())?.showNotification(titulo, { body: corpo, icon: "icons/icon-192.png", badge: "icons/badge-96.png", tag: "limite", data: { url: "./#/gastos" } }); } catch {}
   }
   function checaAlertas() {
-    const ym = hojeBRT().slice(0, 7), S = summarize(list(), ym), done = store.get("gastos_alertas", {}), feitos = done[ym] || (done[ym] = {});
+    const ym = hojeBRT().slice(0, 7), S = summarize(list(), ym, "p"), done = store.get("gastos_alertas", {}), feitos = done[ym] || (done[ym] = {});
     const novos = alertasNovos({ S, limite: lim(), orcamentos: orc(), feitos, fBRL });
     if (!novos.length) return;
     for (const k of Object.keys(done)) if (k < ymAdd(ym, -2)) delete done[k];
@@ -63,6 +65,7 @@ export function makeGastos(c) {
       <div class="grid2"><div><label>Valor (R$)</label><input id="g-v" inputmode="decimal" placeholder="0,00" value="${e ? String(e.v).replace(".", ",") : ""}"></div><div><label>Data</label><input id="g-dt" type="date" value="${e ? e.ts : hojeBRT()}"></div></div>
       <label>Descrição</label><input id="g-d" placeholder="ex.: mercado do bairro" value="${e ? esc(e.d) : ""}">
       <label>Categoria</label><select id="g-c">${cats.map((x) => `<option value="${x.k}" ${e && e.c === x.k ? "selected" : ""}>${x.n}</option>`).join("")}</select>
+      <label>Conta</label><select id="g-w"><option value="p" ${(e ? contaDe(e) : st.conta) !== "e" ? "selected" : ""}>Pessoal</option><option value="e" ${(e ? contaDe(e) : st.conta) === "e" ? "selected" : ""}>Empresa</option></select>
       <label>Foto da nota (opcional; fica só neste aparelho)${e && fotos.has(e.id) ? " · já tem uma foto" : ""}</label><input id="g-foto" type="file" accept="image/*">
       <button class="btn" id="g-save">${e ? "Salvar alterações" : "Salvar lançamento"}</button>${e ? '<button class="btn ghost" id="g-cancel">Cancelar edição</button>' : ""}</details>`;
   }
@@ -138,16 +141,34 @@ export function makeGastos(c) {
     const base = st.todo ? L.filter((x) => !x.deleted).sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0)) : S.itens, cats = [...new Set(base.map((x) => x.c))];
     const lista = filtrar(base, { q: st.q, cat: st.cat }), n = st.all ? lista.length : 30;
     let h = secTitle(`${ic("search", "sm")} Lançamentos (${lista.length})`) + `<div class="card"><input id="gs-q" placeholder="Buscar (ex.: mercado, uber)" value="${esc(st.q)}" autocomplete="off"><div class="fchips" style="margin:8px 0"><button data-gcat="" class="${st.cat ? "" : "on"}">Todas</button>${cats.map((k) => `<button data-gcat="${k}" class="${st.cat === k ? "on" : ""}">${esc(catOf(k, base.find((x) => x.c === k)?.tp).n)}</button>`).join("")}</div><button class="btn ghost sm" id="gs-todo" style="margin-bottom:6px">${st.todo ? "Só este mês" : "Todos os meses"}</button>`;
-    h += lista.length ? lista.slice(0, n).map((x) => `<div class="gl"><div class="gl-m"><div class="gl-d">${esc(x.d || catOf(x.c, x.tp).n)}</div><div class="mut gl-s">${st.todo ? dBR(x.ts) : dBR(x.ts).slice(0, 5)} · ${esc(catOf(x.c, x.tp).n)}${x.src === "wa" ? " · WhatsApp" : ""}</div></div><div class="num gl-v ${x.tp === "receita" ? "up" : ""}">${x.tp === "receita" ? "+ " : ""}${fBRL(x.v)}</div>${fotos.has(x.id) ? `<button class="icbtn" data-gfoto="${esc(x.id)}" aria-label="Ver a foto da nota">${ic("receipt", "sm")}</button>` : ""}<button class="icbtn" data-gedit="${esc(x.id)}" aria-label="Editar">${ic("edit", "sm")}</button><button class="icbtn" data-gdel="${esc(x.id)}" aria-label="Excluir">${ic("trash", "sm")}</button></div>`).join("") + (lista.length > 30 && !st.all ? `<button class="btn ghost" id="g-all">Ver todos (${lista.length})</button>` : "") : `<div class="empty">${st.q || st.cat ? "Nada encontrado com esse filtro." : "Sem lançamentos neste mês."}</div>`;
+    h += lista.length ? lista.slice(0, n).map((x) => `<div class="gl"><div class="gl-m"><div class="gl-d">${esc(x.d || catOf(x.c, x.tp).n)}</div><div class="mut gl-s">${st.todo ? dBR(x.ts) : dBR(x.ts).slice(0, 5)} · ${esc(catOf(x.c, x.tp).n)}${contaDe(x) === "e" ? " · Empresa" : ""}${x.src === "wa" ? " · WhatsApp" : ""}</div></div><div class="num gl-v ${x.tp === "receita" ? "up" : ""}">${x.tp === "receita" ? "+ " : ""}${fBRL(x.v)}</div>${fotos.has(x.id) ? `<button class="icbtn" data-gfoto="${esc(x.id)}" aria-label="Ver a foto da nota">${ic("receipt", "sm")}</button>` : ""}<button class="icbtn" data-gedit="${esc(x.id)}" aria-label="Editar">${ic("edit", "sm")}</button><button class="icbtn" data-gdel="${esc(x.id)}" aria-label="Excluir">${ic("trash", "sm")}</button></div>`).join("") + (lista.length > 30 && !st.all ? `<button class="btn ghost" id="g-all">Ver todos (${lista.length})</button>` : "") : `<div class="empty">${st.q || st.cat ? "Nada encontrado com esse filtro." : "Sem lançamentos neste mês."}</div>`;
     return h + "</div>";
   }
 
+  function contaSeg() {
+    return `<div class="seg" id="g-conta" style="margin:0 0 10px">${[["t", "Tudo"], ["p", "Pessoal"], ["e", "Empresa"]].map(([k, n]) => `<button data-gconta="${k}" class="${st.conta === k ? "on" : ""}">${n}</button>`).join("")}</div>`;
+  }
+  /** Dinheiro em conta (opcional): informa-se quanto tem e o app desconta gastos e soma receitas dali em diante. */
+  function saldoCard() {
+    const sd = saldos(), L = list(), ks = ["p", "e"].filter((k) => sd[k] && (st.conta === "t" || st.conta === k));
+    let h = secTitle(`${ic("wallet", "sm")} Dinheiro em conta`) + `<div class="card">`;
+    h += ks.length ? ks.map((k) => `<div class="gc-h"><span>${k === "e" ? "Empresa" : "Pessoal"} <small class="mut">(informado ${fBRL(sd[k].v)} em ${dBR(sd[k].ts)})</small></span><b class="num">${fBRL(saldoConta(L, k, sd[k]))}</b></div><button class="btn ghost sm" data-gsrm="${k}" style="margin:2px 0 10px">Remover o saldo da ${k === "e" ? "empresa" : "pessoal"}</button>`).join("") : `<div class="mut" style="font-size:13px;margin-bottom:6px">Opcional. Diga quanto você tem hoje em cada conta e o app vai descontando os gastos e somando as receitas. É uma estimativa: vale só o que for anotado.</div>`;
+    h += `<details style="margin-top:6px"><summary>Informar quanto tenho em conta</summary><div class="grid2"><div><label>Conta</label><select id="gs-w"><option value="p" ${st.conta !== "e" ? "selected" : ""}>Pessoal</option><option value="e" ${st.conta === "e" ? "selected" : ""}>Empresa</option></select></div><div><label>Quanto tenho (R$)</label><input id="gs-v" inputmode="decimal" placeholder="ex.: 100 mil"></div></div><button class="btn" id="gs-save">Guardar</button></details></div>`;
+    return h;
+  }
+  function adotaSaldos(srv) {
+    if (!srv || typeof srv !== "object") return; const loc = saldos(); let mudou = false;
+    for (const k of ["p", "e"]) { const s = srv[k]; if (s && isFinite(s.v) && (!loc[k] || String(s.ts) >= String(loc[k].ts))) { if (!loc[k] || loc[k].v !== s.v || loc[k].ts !== s.ts) { loc[k] = s; mudou = true; } } }
+    if (mudou) store.set("gastos_saldos", loc);
+  }
+
   function vGastos() {
-    const L = list(), S = summarize(L, st.ym), hoje = hojeBRT().slice(0, 7);
+    const L = vis(), S = summarize(L, st.ym), hoje = hojeBRT().slice(0, 7);
     const kp = (t, v, cls = "") => `<div class="stat"><small>${t}</small><b class="num ${cls}">${fBRL(v)}</b></div>`;
     let h = `<div class="gtop"><button class="icbtn" data-go="#/hoje" aria-label="Voltar">${ic("back")}</button><div class="gtit">Gastos</div></div><div class="mnav"><button class="icbtn" data-gm="-1" aria-label="Mês anterior">${ic("back")}</button><div class="mlabel">${cap(ymLabel(st.ym))}</div><button class="icbtn flip" data-gm="1" aria-label="Próximo mês" ${st.ym >= hoje ? "disabled" : ""}>${ic("back")}</button></div>`;
+    h += contaSeg();
     h += `<div class="grid2" style="margin-bottom:10px">${kp("Receitas", S.receitas, "up")}${kp("Gastos", S.gastos)}${kp("Investido", S.investido)}${kp("Saldo", S.saldo, S.saldo >= 0 ? "up" : "down")}</div>`;
-    h += limiteCard(S);
+    h += saldoCard() + (st.conta === "e" ? "" : limiteCard(S));
     h += `<div class="mut" style="font-size:12.5px;line-height:1.5;margin:0 4px 6px">Escreva na barra de baixo, como falaria: "uber 23,50 ontem", "+1500 salário", "dia 12 farmácia 37".</div>` + secTitle(`${ic("plus", "sm")} Anotar com os campos`) + `<div class="card">${formCard()}</div>`;
     h += categoriasCard(L) + graficoCard(L) + metaCard(L, S) + fixosCard() + lancamentosCard(L, S);
     h += secTitle(`${ic("down", "sm")} Relatório e planilha`) + `<div class="card"><button class="btn" id="g-pdf" style="margin-top:0">Relatório de ${esc(ymLabel(st.ym))} (PDF)</button><button class="btn ghost" id="g-csv">Planilha do mês (CSV, abre no Excel)</button><button class="btn ghost" id="g-csv-all">Planilha com tudo</button>${st.status?.linked ? '<button class="btn ghost" id="g-send">Enviar o relatório para o meu chat</button>' : ""}</div>`;
@@ -156,11 +177,11 @@ export function makeGastos(c) {
   }
 
   // ------------------------------------------------------------ ações
-  function addFromParsed(p) {
-    const it = { id: newId(), ts: p.date, v: p.v, c: p.c, d: p.d, tp: p.tp, src: "app", deleted: 0 };
+  function addFromParsed(p, w) {
+    const it = { id: newId(), ts: p.date, v: p.v, c: p.c, d: p.d, tp: p.tp, src: "app", deleted: 0, ...(w === "e" ? { w: "e" } : {}) };
     save([...list(), it]); touch(it.id); checaAlertas();
     st.ym = p.date.slice(0, 7);
-    toast(`${p.tp === "receita" ? "Receita" : "Gasto"} anotado: ${fBRL(p.v)} · ${catOf(p.c, p.tp).n}`);
+    toast(`${p.tp === "receita" ? "Receita" : "Gasto"} anotado: ${fBRL(p.v)} · ${catOf(p.c, p.tp).n}${w === "e" ? " · Empresa" : ""}`);
   }
 
   function bindGastos(render) {
@@ -177,22 +198,30 @@ export function makeGastos(c) {
       st.loading = true;
       N.ativa().then(async (on) => {
         st.cloud = on;
-        if (on) { try { st.status = await N.status(); save(await N.sync(list())); const k = st.status.settings; if (k) store.set("gastos_cfg", { on: !!k.report_on, day: k.report_day, hour: k.report_hour }); } catch { st.status = { linked: false, erro: true }; } }
+        if (on) { try { st.status = await N.status(); save(await N.sync(list())); const k = st.status.settings; if (k) store.set("gastos_cfg", { on: !!k.report_on, day: k.report_day, hour: k.report_hour }); adotaSaldos(k?.saldos); } catch { st.status = { linked: false, erro: true }; } }
       }).finally(() => { st.loading = false; if (location.hash === "#/gastos") render(); });
     }
     document.querySelectorAll("[data-gm]").forEach((b) => b.addEventListener("click", () => { st.ym = ymAdd(st.ym, +b.dataset.gm); st.all = false; render(); }));
     document.querySelectorAll("[data-gtp]").forEach((b) => b.addEventListener("click", () => { st.tp = b.dataset.gtp; if (st.editId) { const l = list(), e = l.find((x) => x.id === st.editId); if (e) e.tp = st.tp; } const dv = { v: $("#g-v")?.value, d: $("#g-d")?.value, dt: $("#g-dt")?.value }; render(); const set = (id, v) => { const el = $(id); if (el && v) el.value = v; }; set("#g-v", dv.v); set("#g-d", dv.d); set("#g-dt", dv.dt); $("#g-det").open = true; }));
-    const quick = () => { const p = parseMessage($("#gq").value, hojeBRT()); if (!p.ok) return toast("Não achei o valor. Ex.: gastei 45 no mercado"); addFromParsed(p); render(); };
+    const quick = () => { const pc = parseConta($("#gq").value), p = parseMessage(pc.text, hojeBRT()); if (!p.ok) return toast("Não achei o valor. Ex.: gastei 45 no mercado"); addFromParsed(p, pc.w || (st.conta === "e" ? "e" : "p")); render(); };
     $("#gq-ok")?.addEventListener("click", quick); $("#gq")?.addEventListener("keydown", (e) => { if (e.key === "Enter") quick(); });
     $("#g-save")?.addEventListener("click", async () => {
       const v = numCore($("#g-v").value), ts = $("#g-dt").value || hojeBRT(); if (!v || v <= 0) return toast("Digite o valor.");
       const tp = st.editId ? list().find((x) => x.id === st.editId)?.tp || st.tp : st.tp, file = $("#g-foto")?.files?.[0]; let id;
-      if (st.editId) { const l = list(), e = l.find((x) => x.id === st.editId); Object.assign(e, { v, ts, d: $("#g-d").value.trim(), c: $("#g-c").value, tp }); save(l); touch(e.id); id = e.id; st.editId = null; toast("Lançamento atualizado."); }
-      else { const it = { id: newId(), ts, v, c: $("#g-c").value, d: $("#g-d").value.trim(), tp, src: "app", deleted: 0 }; save([...list(), it]); touch(it.id); id = it.id; toast("Lançamento salvo."); }
+      if (st.editId) { const l = list(), e = l.find((x) => x.id === st.editId); Object.assign(e, { v, ts, d: $("#g-d").value.trim(), c: $("#g-c").value, tp, w: $("#g-w")?.value === "e" ? "e" : undefined }); save(l); touch(e.id); id = e.id; st.editId = null; toast("Lançamento atualizado."); }
+      else { const it = { id: newId(), ts, v, c: $("#g-c").value, d: $("#g-d").value.trim(), tp, src: "app", deleted: 0, ...($("#g-w")?.value === "e" ? { w: "e" } : {}) }; save([...list(), it]); touch(it.id); id = it.id; toast("Lançamento salvo."); }
       if (file) { try { await fotoPut(id, await comprime(file)); } catch { toast("Salvei o lançamento, mas não consegui guardar a foto."); } }
       checaAlertas(); st.ym = ts.slice(0, 7); render();
     });
     $("#g-cancel")?.addEventListener("click", () => { st.editId = null; render(); });
+    document.querySelectorAll("[data-gconta]").forEach((b) => b.addEventListener("click", () => { st.conta = b.dataset.gconta; store.set("gastos_conta", st.conta); st.all = false; render(); }));
+    const empurraSaldos = () => { N.ativa().then((on) => { if (on) N.ajustes({ saldos: saldos() }).catch(() => {}); }).catch(() => {}); };
+    $("#gs-save")?.addEventListener("click", () => {
+      const w = $("#gs-w").value === "e" ? "e" : "p", v = valorBR($("#gs-v").value); if (v == null) return toast("Digite quanto você tem. Ex.: 100000 ou 100 mil.");
+      const hojeD = hojeBRT(), sd = saldos(); sd[w] = { v, ts: hojeD, skip: list().filter((x) => !x.deleted && contaDe(x) === w && x.ts >= hojeD).map((x) => x.id).slice(0, 200) };
+      store.set("gastos_saldos", sd); empurraSaldos(); toast(`Saldo da ${contaNome(w).toLowerCase()} guardado.`); render();
+    });
+    document.querySelectorAll("[data-gsrm]").forEach((b) => b.addEventListener("click", () => { const sd = saldos(); delete sd[b.dataset.gsrm]; store.set("gastos_saldos", sd); empurraSaldos(); render(); }));
     document.querySelectorAll("[data-gedit]").forEach((b) => b.addEventListener("click", () => { st.editId = b.dataset.gedit; render(); $("#g-det")?.scrollIntoView({ behavior: "smooth", block: "center" }); }));
     document.querySelectorAll("[data-gdel]").forEach((b) => b.addEventListener("click", () => { if (!confirm("Excluir este lançamento?")) return; const l = list(), e = l.find((x) => x.id === b.dataset.gdel); if (e) { e.deleted = 1; save(l); touch(e.id); fotoDel(e.id); } render(); }));
     $("#g-all")?.addEventListener("click", () => { st.all = true; render(); });
@@ -241,8 +270,8 @@ export function makeGastos(c) {
   async function syncAgora() { gerarFixos(); try { if (!(await N.ativa())) { checaAlertas(); return false; } save(await N.sync(list())); gerarFixos(); checaAlertas(); return true; } catch { return false; } }
   /** Resumo curto do mês corrente para o cartão da tela Hoje. */
   function resumoMes() {
-    const ym = hojeBRT().slice(0, 7), S = summarize(list(), ym), l = lim(), sl = statusLimite(S.gastos, l);
-    return { ym, label: ymLabel(ym), gastos: S.gastos, receitas: S.receitas, saldo: S.saldo, n: S.itens.length, limite: l, p: sl ? sl.p : null, nivel: sl ? sl.nivel : null, top: S.porCat[0] || null };
+    const ym = hojeBRT().slice(0, 7), S = summarize(list(), ym, "p"), E = summarize(list(), ym, "e"), l = lim(), sl = statusLimite(S.gastos, l);
+    return { empresa: E.gastos, nE: E.itens.length, ym, label: ymLabel(ym), gastos: S.gastos, receitas: S.receitas, saldo: S.saldo, n: S.itens.length, limite: l, p: sl ? sl.p : null, nivel: sl ? sl.nivel : null, top: S.porCat[0] || null };
   }
   return { vGastos, bindGastos, syncAgora, pushBox, resumoMes, nuvem: N };
 }

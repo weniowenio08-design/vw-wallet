@@ -83,7 +83,7 @@ export function makeDados(c) {
         const data = await unpack(await file.text(), async () => prompt("Digite a senha deste backup:"));
         if (!confirm("Restaurar este backup? Os dados atuais do app serão substituídos.")) return;
         Object.keys(localStorage).filter((k) => k.startsWith("vw:") && k !== "vw:snap").forEach((k) => localStorage.removeItem(k));
-        Object.entries(data).forEach(([k, v]) => { if (/^[a-zA-Z][A-Za-z0-9]{0,40}$/.test(k) && !SKIP.has(k) && v != null) store.set(k, v); });
+        Object.entries(data).forEach(([k, v]) => { if (/^[a-zA-Z][A-Za-z0-9_]{0,40}$/.test(k) && !SKIP.has(k) && v != null) store.set(k, v); });
         toast("Backup restaurado."); location.reload();
       } catch (err) { toast(err.message === "senha" ? "Senha incorreta." : err.message === "cancelado" ? "Cancelado." : "Arquivo inválido."); }
       e.target.value = "";

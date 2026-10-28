@@ -299,10 +299,33 @@ const kpi = (l, v, d, key) => `<div class="kpi"${key ? ` data-go="#/indice/${key
 const secTitle = (t, right = "") => `<h2><span>${t}</span>${right}</h2>`;
 
 // ------------------------------------------------------------------ HOJE
+const meuPerfil = () => store.get("perfil", {});
+const avatarHTML = (p, cls = "") => (/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(p.foto || "") ? `<img class="avatar ${cls}" src="${p.foto}" alt="">` : `<span class="avatar ${cls}">${esc((String(p.nome || "").trim()[0] || "U").toUpperCase())}</span>`);
+function helloRow() {
+  const p = meuPerfil(); if (!p.nome && !p.foto && store.get("perfilVisto", false)) return "";
+  const hh = new Date(Date.now() - 3 * 3600e3).getUTCHours(), sd = hh < 12 ? "Bom dia" : hh < 18 ? "Boa tarde" : "Boa noite";
+  return `<div class="hello" data-go="#/mais" role="button" tabindex="0">${avatarHTML(p)}<div><small>${p.nome ? sd : "Personalize seu perfil"}</small><b>${p.nome ? esc(p.nome) : "Toque para colocar seu nome e foto"}</b></div></div>`;
+}
+function meuPerfilCard() {
+  const p = meuPerfil(); store.set("perfilVisto", true);
+  return secTitle(`${ic("user", "sm")} Meu perfil`) + `<div class="card perfil">${avatarHTML(p, "big")}<div class="pf-b"><label for="pf-nome">Seu nome</label><input id="pf-nome" maxlength="40" placeholder="ex.: Vinícius" value="${esc(p.nome || "")}" autocomplete="name"><div class="pf-act"><label class="btn ghost sm" for="pf-foto" style="margin:0">${p.foto ? "Trocar foto" : "Escolher foto"}</label><input id="pf-foto" type="file" accept="image/*" hidden>${p.foto ? '<button class="btn ghost sm" id="pf-rm" style="margin:0">Remover foto</button>' : ""}</div></div></div><div class="mut" style="font-size:12.5px;margin:-4px 4px 8px">O nome e a foto ficam só neste aparelho.</div>`;
+}
+function bindMeuPerfil() {
+  $("#pf-nome")?.addEventListener("change", (e) => { const p = meuPerfil(); p.nome = e.target.value.trim().slice(0, 40); store.set("perfil", p); toast("Nome salvo."); render(); });
+  $("#pf-rm")?.addEventListener("click", () => { const p = meuPerfil(); delete p.foto; store.set("perfil", p); render(); });
+  $("#pf-foto")?.addEventListener("change", async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    try {
+      const bm = await createImageBitmap(f), s = Math.min(bm.width, bm.height), cv = document.createElement("canvas"); cv.width = cv.height = 256;
+      cv.getContext("2d").drawImage(bm, (bm.width - s) / 2, (bm.height - s) / 2, s, s, 0, 0, 256, 256);
+      const p = meuPerfil(); p.foto = cv.toDataURL("image/jpeg", 0.82); store.set("perfil", p); toast("Foto salva."); render();
+    } catch { toast("Não consegui usar essa foto."); }
+  });
+}
 function gastosCard() {
-  const r = G.resumoMes(), nm = (r.label || "").toLowerCase();
+  const r = G.resumoMes(), nm = (r.label || "").toLowerCase(), emp = r.nE ? `<div class="gsub" style="margin-top:6px">Empresa: ${fBRL(r.empresa)} no mês</div>` : "";
   const barra = r.p != null ? `<div class="gprog ${r.nivel}"><i style="width:${Math.min(100, Math.round(r.p * 100))}%"></i></div><div class="gsub">${Math.round(r.p * 100)}% do limite de ${fBRL(r.limite)}${r.nivel === "estourou" ? " · estourou" : r.nivel === "alerta" ? " · perto do limite" : ""}</div>` : (r.n ? `<div class="gsub">Receitas ${fBRL(r.receitas)} · saldo ${fBRL(r.saldo)}${r.top ? " · mais gasto: " + esc(r.top.n) : ""}</div>` : `<div class="gsub">Nada anotado em ${esc(nm)} ainda. Escreva "mercado 45" e pronto.</div>`);
-  return `<div class="gcard" data-go="#/gastos" role="button" tabindex="0"><div class="gh"><span>${ic("receipt", "sm")} Gastos de ${esc(nm)}</span><b>Abrir ›</b></div><div class="gv num">${fBRL(r.gastos)}</div>${barra}<button class="btn" data-go="#/gastos" style="margin-top:12px">${ic("plus", "sm")} Anotar gasto</button></div>`;
+  return `<div class="gcard" data-go="#/gastos" role="button" tabindex="0"><div class="gh"><span>${ic("receipt", "sm")} Gastos ${r.nE ? "pessoais " : ""}de ${esc(nm)}</span><b>Abrir ›</b></div><div class="gv num">${fBRL(r.gastos)}</div>${barra}${emp}<button class="btn" data-go="#/gastos" style="margin-top:12px">${ic("plus", "sm")} Anotar gasto</button></div>`;
 }
 function openRegime() {
   const s = D.summary; if (!s) return; const R = REGIME[s.regime.level];
@@ -311,7 +334,7 @@ function openRegime() {
 }
 function vHoje() {
   const s = D.summary, R = REGIME[s.regime.level], c = s.context, m = s.macro, fav = favs();
-  let h = welcomeCard() + dados.backupBanner() + X.aporteBanner() + gastosCard() + sinaisCard(posLive(), true);
+  let h = welcomeCard() + dados.backupBanner() + X.aporteBanner() + helloRow() + gastosCard() + sinaisCard(posLive(), true);
   h += secTitle("Panorama") + `<div class="strip">${kpi("Selic", m.selic != null ? fN(m.selic) + "%" : "—", null, "selic")}${kpi("CDI", m.cdi != null ? fN(m.cdi) + "%" : "—", null, "cdi")}${kpi("IPCA 12m", m.ipca12 != null ? fN(m.ipca12) + "%" : "—", null, "ipca12")}${kpi("Dólar", c.usd ? "R$ " + fN(c.usd.p) : "—", c.usd?.d1, "usd")}${kpi("Ibovespa", c.ibov ? fN(c.ibov.p, 0) : "—", c.ibov?.d1, "ibov")}${kpi("S&P 500", c.sp500 ? fN(c.sp500.p, 0) : "—", c.sp500?.d1, "sp500")}</div>`;
   h += X.focusCard() + X.tesouroCard();
   if (D.digest?.text) h += secTitle("Resumo do dia") + `<div class="card" style="line-height:1.5;font-size:14.5px">${esc(D.digest.text).replace(/\n/g, "<br>")}</div>`;
@@ -759,7 +782,7 @@ function bindPerfil() {
 // ------------------------------------------------------------------ MAIS
 function vMais() {
   const T = { ...DEF_T, ...store.get("metas", {}) }, b = D.backtest, topic = store.get("ntfy", ""), pl = myPlats();
-  let h = `<button class="btn ghost" data-go="#/noticias" style="margin-top:0">${ic("news", "sm")} Notícias do mercado</button>` + shareCard() + secTitle(`${ic(temaEscuro() ? "moon" : "sun", "sm")} Aparência`) + `<div class="card"><div class="seg" id="tema-seg">${[["auto", "Automático"], ["claro", "Claro"], ["escuro", "Escuro"]].map(([k, n]) => `<button data-tema="${k}" class="${temaEscolhido() === k ? "on" : ""}">${n}</button>`).join("")}</div><div class="mut" style="font-size:12.5px;line-height:1.5">Automático segue o modo do seu celular. Claro usa o fundo creme; escuro usa o fundo preto.</div></div>` + secTitle(`${ic("bell", "sm")} Avisos do Uiraçu`) + `<div class="card" style="line-height:1.55;font-size:14.5px"><div id="push-box"><span class="mut">Verificando…</span></div></div>` + secTitle(`${ic("bell", "sm")} Plano B: avisos pelo ntfy`) + `<div class="card" style="line-height:1.55;font-size:14.5px">Se os avisos do próprio app não estiverem ligados, o Uiraçu ainda avisa pelo ntfy:<br>1. Instale o app <b>ntfy</b> (Play Store, F-Droid ou App Store).<br>2. Toque em <b>+</b> e assine o tópico secreto abaixo.<br>3. Nos Ajustes do Oppo, deixe o ntfy sem restrição de bateria e com início automático.<label>Seu tópico secreto</label><input id="ntfy" value="${esc(topic)}" placeholder="cole o tópico que o Uiraçu gerou"><div id="ntf-links"></div><button class="btn ghost" id="ntf-perm">Permitir avisos também aqui no app</button></div>`;
+  let h = meuPerfilCard() + `<button class="btn ghost" data-go="#/noticias" style="margin-top:0">${ic("news", "sm")} Notícias do mercado</button>` + shareCard() + secTitle(`${ic(temaEscuro() ? "moon" : "sun", "sm")} Aparência`) + `<div class="card"><div class="seg" id="tema-seg">${[["auto", "Automático"], ["claro", "Claro"], ["escuro", "Escuro"]].map(([k, n]) => `<button data-tema="${k}" class="${temaEscolhido() === k ? "on" : ""}">${n}</button>`).join("")}</div><div class="mut" style="font-size:12.5px;line-height:1.5">Automático segue o modo do seu celular. Claro usa o fundo creme; escuro usa o fundo preto.</div></div>` + secTitle(`${ic("bell", "sm")} Avisos do Uiraçu`) + `<div class="card" style="line-height:1.55;font-size:14.5px"><div id="push-box"><span class="mut">Verificando…</span></div></div>` + secTitle(`${ic("bell", "sm")} Plano B: avisos pelo ntfy`) + `<div class="card" style="line-height:1.55;font-size:14.5px">Se os avisos do próprio app não estiverem ligados, o Uiraçu ainda avisa pelo ntfy:<br>1. Instale o app <b>ntfy</b> (Play Store, F-Droid ou App Store).<br>2. Toque em <b>+</b> e assine o tópico secreto abaixo.<br>3. Nos Ajustes do Oppo, deixe o ntfy sem restrição de bateria e com início automático.<label>Seu tópico secreto</label><input id="ntfy" value="${esc(topic)}" placeholder="cole o tópico que o Uiraçu gerou"><div id="ntf-links"></div><button class="btn ghost" id="ntf-perm">Permitir avisos também aqui no app</button></div>`;
   h += secTitle(`${ic("wallet", "sm")} Minhas plataformas`) + `<div class="card"><div class="chips" id="pl-chips" style="margin:0 0 10px">${pl.map((p) => `<span class="chip on">${esc(p)} <button data-rmpl="${esc(p)}" aria-label="Remover" style="border:0;background:none;color:inherit;font-weight:800;cursor:pointer">×</button></span>`).join("") || '<span class="mut">Nenhuma ainda.</span>'}</div><label>Adicionar plataforma (digite as primeiras letras)</label><div><input id="pl-in" placeholder="ex.: xp, nu, rico, revolut…" autocomplete="off"></div><div class="mut" style="font-size:12px;margin-top:8px;line-height:1.5">O app mostra, para cada classe, em quais das suas plataformas dá para comprar. Confirme no app de cada uma: as ofertas mudam.</div></div>`;
   h += secTitle(`${ic("target", "sm")} Metas da carteira (%)`) + `<div class="card"><button class="btn" id="meta-auto" style="margin-top:0">${ic("user", "sm")} Gerar metas pelo meu perfil</button><div class="mut" style="font-size:12px;margin-top:6px">Ou ajuste à mão (a soma vira 100%):</div><div class="grid2">${CLS.map(([k, n]) => `<div><label>${n}</label><input data-meta="${k}" inputmode="decimal" value="${T[k]}"></div>`).join("")}</div><button class="btn ghost" id="meta-save">Salvar metas</button></div>`;
   h += secTitle(`${ic("book", "sm")} O que o histórico mostra`) + `<div class="card" style="font-size:14.5px;line-height:1.55">`;
@@ -772,6 +795,7 @@ function vMais() {
   return h;
 }
 function bindMais() {
+  bindMeuPerfil();
   X.bindMaisExtras(render); bindShare(); G.pushBox($("#push-box"), render);
   document.querySelectorAll("#tema-seg [data-tema]").forEach((b) => b.addEventListener("click", () => { store.set("tema", b.dataset.tema); aplicaTema(); render(); }));
   $("#ntfy")?.addEventListener("change", (e) => store.set("ntfy", e.target.value.trim()));

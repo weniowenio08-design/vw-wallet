@@ -281,3 +281,11 @@ body.modo-gastos{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
 .gprog.alerta i{background:#E8B04B}.gprog.estourou i{background:#FF7A84}
 .gcard .btn{background:#D4C583;color:#0C314A;border:0}
 .gcard .ic{stroke:currentColor}
+
+/* ---- perfil */
+.avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;flex:none;background:linear-gradient(160deg,#0C314A,#185365);color:#D4C583;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:18px}
+.avatar.big{width:76px;height:76px;font-size:32px}
+.hello{display:flex;align-items:center;gap:12px;margin:2px 0 8px;cursor:pointer}
+.hello small{display:block;color:var(--mut);font-size:12.5px}.hello b{font-size:17px}
+.perfil{display:flex;gap:14px;align-items:center}.perfil .pf-b{flex:1;min-width:0}
+.pf-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
