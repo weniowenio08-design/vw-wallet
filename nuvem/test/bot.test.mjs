@@ -158,6 +158,20 @@ test("comandos: catálogo no Telegram tem /links e texto copiável", async () =>
   await tgz({ text: "/modoempresa" }); assert.match(saidas.filter((x) => x.tg).at(-1).text.body, /Modo <b>empresa<\/b>/);
 });
 
+test("bot: parcelas, meio, lote, várias linhas e consulta 'quanto gastei com'", async () => {
+  await vincula();
+  await zap(txt("notebook 3000 em 6x no nubank")); assert.match(ultima(), /Parcelado em 6x de R\$\s500,00/);
+  assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE deleted=0")[0].n, 6);
+  const f = linhas("SELECT x FROM expenses ORDER BY ts LIMIT 1")[0].x; assert.match(f, /Nubank/); assert.match(f, /"pg"/);
+  await zap(txt("empresa ração 3200 lote 3\ndiesel 450 lote 3\nvacina 600"));
+  assert.match(ultima(), /ração|Ração/i); assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE w='e'")[0].n, 3);
+  await zap(txt("quanto gastei com ração")); assert.match(ultima(), /ração.*R\$\s3\.200,00\* \(1 lançamento\)/is);
+  await zap(txt("quanto gastei no nubank")); assert.match(ultima(), /nubank.*R\$\s500,00/is);
+  await zap(txt("quanto gastei com lote 3")); assert.match(ultima(), /R\$\s3\.650,00\* \(2 lançamentos\)/);
+  await zap(txt("quanto gastei este mês")); assert.match(ultima(), /Receitas|Gastos/);   // sem termo cai no resumo
+  const { body } = await api("/api/sync", { since: 0, items: [] }); assert.ok(body.items.some((i) => i.m === "Nubank" && i.pg?.n === 6));
+});
+
 test("repetição do mesmo id é ignorada", async () => {
   await vincula();
   const raw = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ id: "dup1", from: WA, ...txt("gastei 9 no cafe") }] } }] }] });

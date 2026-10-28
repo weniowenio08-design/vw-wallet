@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS expenses (
   v REAL NOT NULL, c TEXT NOT NULL, d TEXT NOT NULL DEFAULT '',
   tp TEXT NOT NULL,                         -- gasto | receita
   w TEXT NOT NULL DEFAULT 'p',              -- conta: p = pessoal, e = empresa
+  x TEXT,                                   -- extras em JSON: meio (m), lote (l), dedutível (dd), parcela (pg)
   src TEXT NOT NULL,                        -- app | wa
   deleted INTEGER NOT NULL DEFAULT 0,
   upd INTEGER NOT NULL,                     -- hora do servidor (ms) da última alteração

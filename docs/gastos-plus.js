@@ -68,7 +68,7 @@ export const sobraDoMes = (S) => Math.max(0, Math.round((S.receitas - S.gastos -
 /** Busca e filtros: q procura na descrição e na categoria (sem acento); cat filtra por categoria. */
 export function filtrar(itens, { q = "", cat = "" } = {}) {
   const t = norm(q);
-  return itens.filter((x) => (!cat || x.c === cat) && (!t || norm(`${x.d} ${catOf(x.c, x.tp).n}`).includes(t)));
+  return itens.filter((x) => (!cat || x.c === cat) && (!t || norm(`${x.d} ${catOf(x.c, x.tp).n} ${x.m || ""} ${x.l || ""}`).includes(t)));
 }
 
 /** Dinheiro estimado em uma conta: saldo informado + receitas - gastos lançados depois dele.
@@ -78,4 +78,30 @@ export function saldoConta(list, w, base) {
   const skip = new Set(base.skip || []); let s = base.v;
   for (const x of list) { if (x.deleted || contaDe(x) !== w || x.ts < base.ts || skip.has(x.id)) continue; s += x.tp === "receita" ? x.v : -x.v; }
   return Math.round(s * 100) / 100;
+}
+
+// ------------------------------------------------------------ olhares sobre os extras (meio, lote, dedutível, parcelas)
+const r2 = (v) => Math.round(v * 100) / 100;
+function agrupar(list, ym, chave) {
+  const m = new Map();
+  for (const x of list) { if (x.deleted || x.tp === "receita" || !x.ts.startsWith(ym)) continue; const k = chave(x); if (k) m.set(k, (m.get(k) || 0) + x.v); }
+  return [...m].map(([k, v]) => ({ k, v: r2(v) })).sort((a, b) => b.v - a.v);
+}
+export const porMeio = (list, ym) => agrupar(list, ym, (x) => x.m);
+export const porLote = (list, ym) => agrupar(list, ym, (x) => x.l);
+/** Gastos marcados como dedutíveis no ano (ano = "AAAA"). */
+export function dedutiveis(list, ano) {
+  const its = list.filter((x) => !x.deleted && x.dd && x.tp !== "receita" && x.ts.startsWith(ano));
+  return { itens: its, total: r2(its.reduce((s, x) => s + x.v, 0)) };
+}
+/** Parcelas que ainda vão vencer (data depois de hoje), somadas por mês. */
+export function comprometido(list, hoje) {
+  const por = new Map();
+  for (const x of list) if (!x.deleted && x.pg && x.ts > hoje) por.set(x.ts.slice(0, 7), (por.get(x.ts.slice(0, 7)) || 0) + x.v);
+  return [...por].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([ym, v]) => ({ ym, v: r2(v) }));
+}
+/** Gastos do mês que combinam com um termo: categoria, descrição, meio ou lote ("ração", "nubank", "lote 3"). */
+export function buscaTermo(list, ym, termo) {
+  const t = norm(termo); if (!t) return [];
+  return list.filter((x) => !x.deleted && x.tp !== "receita" && x.ts.startsWith(ym) && [catOf(x.c, x.tp).n, x.d, x.m, x.l].some((s) => s && norm(s).includes(t)));
 }

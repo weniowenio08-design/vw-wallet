@@ -289,3 +289,5 @@ body.modo-gastos{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
 .hello small{display:block;color:var(--mut);font-size:12.5px}.hello b{font-size:17px}
 .perfil{display:flex;gap:14px;align-items:center}.perfil .pf-b{flex:1;min-width:0}
 .pf-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+
+.chk{display:flex;align-items:center;gap:8px;margin-top:30px;font-weight:600}.chk input{width:auto;height:auto;margin:0}

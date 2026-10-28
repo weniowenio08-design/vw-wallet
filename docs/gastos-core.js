@@ -117,9 +117,9 @@ export function summarize(list, ym, w) {
 /** CSV para Excel/Planilhas em português: separador ";", vírgula decimal, UTF-8 com BOM. */
 export function toCsv(list) {
   const q = (s) => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  const rows = [["Data", "Tipo", "Categoria", "Descrição", "Valor (R$)", "Origem", "Conta"].map(q).join(";")];
+  const rows = [["Data", "Tipo", "Categoria", "Descrição", "Valor (R$)", "Origem", "Conta", "Meio", "Lote", "Dedutível", "Parcela"].map(q).join(";")];
   for (const x of [...list].filter((x) => !x.deleted).sort((a, b) => (a.ts < b.ts ? -1 : 1)))
-    rows.push([q(dBR(x.ts)), q(x.tp === "receita" ? "Receita" : "Gasto"), q(catOf(x.c, x.tp).n), q(x.d), q(String(x.v.toFixed(2)).replace(".", ",")), q(x.src === "wa" ? "WhatsApp" : "App"), q(contaDe(x) === "e" ? "Empresa" : "Pessoal")].join(";"));
+    rows.push([q(dBR(x.ts)), q(x.tp === "receita" ? "Receita" : "Gasto"), q(catOf(x.c, x.tp).n), q(x.d), q(String(x.v.toFixed(2)).replace(".", ",")), q(x.src === "wa" ? "WhatsApp" : "App"), q(contaDe(x) === "e" ? "Empresa" : "Pessoal"), q(x.m || ""), q(x.l || ""), q(x.dd ? "Sim" : ""), q(x.pg ? `${x.pg.i}/${x.pg.n}` : "")].join(";"));
   return "﻿" + rows.join("\r\n") + "\r\n";
 }
 
@@ -132,7 +132,7 @@ export function cleanItem(x) {
   if (!isFinite(v) || v <= 0 || v > 1e9 || !/^\d{4}-\d{2}-\d{2}$/.test(ts)) return null;
   const tp = x.tp === "receita" ? "receita" : "gasto";
   const cs = (tp === "receita" ? CATS_REC : CATS).map((c) => c.k);
-  return { id: (String(x.id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) || newId()), ts, v: Math.round(v * 100) / 100, c: cs.includes(x.c) ? x.c : tp === "receita" ? "outras_receitas" : "outros", d: String(x.d ?? "").slice(0, 120), tp, src: x.src === "wa" ? "wa" : "app", deleted: x.deleted ? 1 : 0, ...(x.w === "e" ? { w: "e" } : {}) };
+  return { id: (String(x.id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) || newId()), ts, v: Math.round(v * 100) / 100, c: cs.includes(x.c) ? x.c : tp === "receita" ? "outras_receitas" : "outros", d: String(x.d ?? "").slice(0, 120), tp, src: x.src === "wa" ? "wa" : "app", deleted: x.deleted ? 1 : 0, ...(x.w === "e" ? { w: "e" } : {}), ...cleanExtras(x) };
 }
 
 // ------------------------------------------------------------ contas: Pessoal e Empresa (granjas)
@@ -153,4 +153,49 @@ export function parseConta(text) {
   if ((m = new RegExp("^" + nm + "\\s*[:,\\-]?\\s+", "i").exec(t))) { w = ehP(m[1]) ? "p" : "e"; t = t.slice(m[0].length); }
   else if ((m = new RegExp("[\\s,\\-]+(?:na |da |do |no |de )?" + nm + "\\s*$", "i").exec(t))) { w = ehP(m[1]) ? "p" : "e"; t = t.slice(0, m.index); }
   return { w, text: t.trim() };
+}
+
+// ------------------------------------------------------------ extras do lançamento: meio de pagamento, lote, dedutível, parcelas
+export const EXTRAS = ["m", "l", "dd", "pg"];
+/** Valida os campos extras vindos de fora. */
+export function cleanExtras(x) {
+  const ex = {};
+  if (typeof x.m === "string" && x.m.trim()) ex.m = x.m.trim().slice(0, 24);
+  if (typeof x.l === "string" && x.l.trim()) ex.l = x.l.trim().slice(0, 30);
+  if (x.dd) ex.dd = 1;
+  if (x.pg && typeof x.pg === "object") {
+    const i = Math.round(+x.pg.i), n = Math.round(+x.pg.n), g = String(x.pg.g || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 16);
+    if (g && i >= 1 && n >= i && n <= 60) ex.pg = { g, i, n };
+  }
+  return ex;
+}
+const MEIOS = { pix: "Pix", dinheiro: "Dinheiro", especie: "Dinheiro", debito: "Débito", credito: "Crédito", cartao: "Cartão", nubank: "Nubank", inter: "Inter", itau: "Itaú", bradesco: "Bradesco", caixa: "Caixa", santander: "Santander", c6: "C6", picpay: "PicPay", "mercado pago": "Mercado Pago", "banco do brasil": "Banco do Brasil", bb: "BB" };
+const capl = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+/** Tira da frase o meio de pagamento ("no nubank"), o lote ("lote 3", "#galpao2"), "dedutível" e as parcelas ("em 3x", "3x de 100"). */
+export function parseExtras(text) {
+  let t = String(text ?? ""), ex = {};
+  const take = (re, fn) => { const m = re.exec(t); if (m && fn(m) !== false) t = (t.slice(0, m.index) + " " + t.slice(m.index + m[0].length)).replace(/\s+/g, " ").trim(); };
+  take(/\b(?:dedut[ií]vel|deduzir|declarar)\b/i, () => { ex.dd = 1; });
+  take(/\b(lote|galp[aã]o|talh[aã]o|avi[aá]rio|safra)\s+([\p{L}\d]{1,12})\b/iu, (m) => { ex.l = capl(m[1].toLowerCase()) + " " + m[2]; });
+  if (!ex.l) take(/#\s*([\p{L}\d_-]{1,20})/u, (m) => { ex.l = capl(m[1]); });
+  const parc = (n, por) => { n = +n; if (n < 2 || n > 60) return false; ex.parc = n; if (por) ex.porParcela = true; };
+  take(/\b(\d{1,2})\s*x\s+de\b/i, (m) => parc(m[1], true));
+  if (!ex.parc) take(/\bem\s+(\d{1,2})\s*x\b/i, (m) => parc(m[1]));
+  if (!ex.parc) take(/\bparcel\w*\s+(?:em\s+)?(\d{1,2})\s*x?\b/i, (m) => parc(m[1]));
+  if (!ex.parc) take(/\b(?:em\s+)?(\d{1,2})\s*(?:vezes|parcelas?)\b/i, (m) => parc(m[1]));
+  take(/\b(?:no|na|com|pelo|pela|via)\s+(?:o\s+|a\s+)?(?:cart[aã]o\s+(?:d[oae]\s+)?)?(nubank|inter|ita[uú]|bradesco|caixa|santander|c6|picpay|mercado\s+pago|banco\s+do\s+brasil|bb|pix|dinheiro|esp[eé]cie|d[eé]bito|cr[eé]dito|cart[aã]o)\b/i, (m) => { ex.m = MEIOS[norm(m[1])] || capl(m[1]); });
+  return { text: t, ...ex };
+}
+/** Soma meses a uma data AAAA-MM-DD, sem estourar o fim do mês (31/jan + 1 mês = 28/fev). */
+export function addMonthsISO(iso, k) {
+  const y = +iso.slice(0, 4), m = +iso.slice(5, 7) - 1, d = +iso.slice(8, 10), alvo = new Date(Date.UTC(y, m + k, 1)), ult = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate();
+  return `${alvo.getUTCFullYear()}-${two(alvo.getUTCMonth() + 1)}-${two(Math.min(d, ult))}`;
+}
+/** Transforma o que foi entendido da frase em lançamentos: 1, ou N parcelas mensais (a primeira na data da compra). */
+export function expandir(p, ex = {}, base = {}) {
+  const extras = { ...(ex.m ? { m: ex.m } : {}), ...(ex.l ? { l: ex.l } : {}), ...(ex.dd ? { dd: 1 } : {}) };
+  const n = ex.parc && p.tp === "gasto" ? ex.parc : 1;
+  if (n === 1) return [{ id: newId(), ts: p.date, v: p.v, c: p.c, d: p.d, tp: p.tp, ...base, ...extras }];
+  const g = newId().slice(0, 8), total = ex.porParcela ? Math.round(p.v * n * 100) / 100 : p.v, cada = ex.porParcela ? p.v : Math.floor((total * 100) / n) / 100, nome = p.d || catOf(p.c, p.tp).n;
+  return Array.from({ length: n }, (_, i) => ({ id: newId(), ts: addMonthsISO(p.date, i), v: i === n - 1 ? Math.round((total - cada * (n - 1)) * 100) / 100 : cada, c: p.c, d: `${nome} (${i + 1}/${n})`, tp: p.tp, ...base, ...extras, pg: { g, i: i + 1, n } }));
 }

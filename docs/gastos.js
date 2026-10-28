@@ -1,8 +1,8 @@
 // Aba "Gastos": anotar (frase livre ou campos), resumo do mês, relatório em PDF, planilha CSV e o assessor no WhatsApp.
 // Tudo fica no aparelho (localStorage). Se a nuvem estiver ligada (config.json), os gastos que o bot anota no WhatsApp chegam aqui.
-import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, num as numCore, contaDe, contaNome, parseConta, valorBR } from "./gastos-core.js";
+import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, num as numCore, contaDe, contaNome, parseConta, valorBR, parseExtras, expandir } from "./gastos-core.js";
 import { relatorioPdf } from "./relatorio.js";
-import { serie, comparaCategorias, statusLimite, alertasNovos, fixosPendentes, progressoMeta, sobraDoMes, filtrar, saldoConta } from "./gastos-plus.js";
+import { serie, comparaCategorias, statusLimite, alertasNovos, fixosPendentes, progressoMeta, sobraDoMes, filtrar, saldoConta, porMeio, porLote, dedutiveis, comprometido } from "./gastos-plus.js";
 import { makeNuvem } from "./nuvem.js";
 
 export function makeGastos(c) {
@@ -11,6 +11,7 @@ export function makeGastos(c) {
   const st = { conta: store.get("gastos_conta", "t"), ym: hojeBRT().slice(0, 7), tp: "gasto", editId: null, cloud: null, status: null, code: null, all: false, loading: false, q: "", cat: "", todo: false, fotosOk: false };
   const fotos = new Set();
   const MES3 = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const MEIOS_SUG = ["Pix", "Dinheiro", "Débito", "Crédito", "Nubank", "Inter", "Itaú", "Bradesco", "Caixa", "Santander", "C6", "PicPay", "Mercado Pago"];
   const list = () => store.get("gastos", []);
   const vis = () => (st.conta === "t" ? list() : list().filter((x) => contaDe(x) === st.conta));   // o que a tela mostra, conforme o seletor de conta
   const saldos = () => store.get("gastos_saldos", {});
@@ -65,6 +66,8 @@ export function makeGastos(c) {
       <div class="grid2"><div><label>Valor (R$)</label><input id="g-v" inputmode="decimal" placeholder="0,00" value="${e ? String(e.v).replace(".", ",") : ""}"></div><div><label>Data</label><input id="g-dt" type="date" value="${e ? e.ts : hojeBRT()}"></div></div>
       <label>Descrição</label><input id="g-d" placeholder="ex.: mercado do bairro" value="${e ? esc(e.d) : ""}">
       <label>Categoria</label><select id="g-c">${cats.map((x) => `<option value="${x.k}" ${e && e.c === x.k ? "selected" : ""}>${x.n}</option>`).join("")}</select>
+      <div class="grid2"><div><label>Meio de pagamento</label><input id="g-m" list="g-ml" placeholder="ex.: Nubank, Pix" value="${e?.m ? esc(e.m) : ""}"><datalist id="g-ml">${MEIOS_SUG.map((m) => `<option value="${m}">`).join("")}</datalist></div><div><label>Lote / galpão</label><input id="g-l" placeholder="ex.: Lote 3" value="${e?.l ? esc(e.l) : ""}"></div></div>
+      <div class="grid2"><div><label>Parcelas (compra parcelada)</label><input id="g-parc" inputmode="numeric" placeholder="1" ${e ? "disabled" : ""}></div><div><label class="chk"><input type="checkbox" id="g-dd" ${e?.dd ? "checked" : ""}> Dedutível no imposto</label></div></div>
       <label>Conta</label><select id="g-w"><option value="p" ${(e ? contaDe(e) : st.conta) !== "e" ? "selected" : ""}>Pessoal</option><option value="e" ${(e ? contaDe(e) : st.conta) === "e" ? "selected" : ""}>Empresa</option></select>
       <label>Foto da nota (opcional; fica só neste aparelho)${e && fotos.has(e.id) ? " · já tem uma foto" : ""}</label><input id="g-foto" type="file" accept="image/*">
       <button class="btn" id="g-save">${e ? "Salvar alterações" : "Salvar lançamento"}</button>${e ? '<button class="btn ghost" id="g-cancel">Cancelar edição</button>' : ""}</details>`;
@@ -141,7 +144,7 @@ export function makeGastos(c) {
     const base = st.todo ? L.filter((x) => !x.deleted).sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0)) : S.itens, cats = [...new Set(base.map((x) => x.c))];
     const lista = filtrar(base, { q: st.q, cat: st.cat }), n = st.all ? lista.length : 30;
     let h = secTitle(`${ic("search", "sm")} Lançamentos (${lista.length})`) + `<div class="card"><input id="gs-q" placeholder="Buscar (ex.: mercado, uber)" value="${esc(st.q)}" autocomplete="off"><div class="fchips" style="margin:8px 0"><button data-gcat="" class="${st.cat ? "" : "on"}">Todas</button>${cats.map((k) => `<button data-gcat="${k}" class="${st.cat === k ? "on" : ""}">${esc(catOf(k, base.find((x) => x.c === k)?.tp).n)}</button>`).join("")}</div><button class="btn ghost sm" id="gs-todo" style="margin-bottom:6px">${st.todo ? "Só este mês" : "Todos os meses"}</button>`;
-    h += lista.length ? lista.slice(0, n).map((x) => `<div class="gl"><div class="gl-m"><div class="gl-d">${esc(x.d || catOf(x.c, x.tp).n)}</div><div class="mut gl-s">${st.todo ? dBR(x.ts) : dBR(x.ts).slice(0, 5)} · ${esc(catOf(x.c, x.tp).n)}${contaDe(x) === "e" ? " · Empresa" : ""}${x.src === "wa" ? " · WhatsApp" : ""}</div></div><div class="num gl-v ${x.tp === "receita" ? "up" : ""}">${x.tp === "receita" ? "+ " : ""}${fBRL(x.v)}</div>${fotos.has(x.id) ? `<button class="icbtn" data-gfoto="${esc(x.id)}" aria-label="Ver a foto da nota">${ic("receipt", "sm")}</button>` : ""}<button class="icbtn" data-gedit="${esc(x.id)}" aria-label="Editar">${ic("edit", "sm")}</button><button class="icbtn" data-gdel="${esc(x.id)}" aria-label="Excluir">${ic("trash", "sm")}</button></div>`).join("") + (lista.length > 30 && !st.all ? `<button class="btn ghost" id="g-all">Ver todos (${lista.length})</button>` : "") : `<div class="empty">${st.q || st.cat ? "Nada encontrado com esse filtro." : "Sem lançamentos neste mês."}</div>`;
+    h += lista.length ? lista.slice(0, n).map((x) => `<div class="gl"><div class="gl-m"><div class="gl-d">${esc(x.d || catOf(x.c, x.tp).n)}</div><div class="mut gl-s">${st.todo ? dBR(x.ts) : dBR(x.ts).slice(0, 5)} · ${esc(catOf(x.c, x.tp).n)}${contaDe(x) === "e" ? " · Empresa" : ""}${x.m ? " · " + esc(x.m) : ""}${x.l ? " · " + esc(x.l) : ""}${x.dd ? " · dedutível" : ""}${x.src === "wa" ? " · WhatsApp" : ""}</div></div><div class="num gl-v ${x.tp === "receita" ? "up" : ""}">${x.tp === "receita" ? "+ " : ""}${fBRL(x.v)}</div>${fotos.has(x.id) ? `<button class="icbtn" data-gfoto="${esc(x.id)}" aria-label="Ver a foto da nota">${ic("receipt", "sm")}</button>` : ""}<button class="icbtn" data-gedit="${esc(x.id)}" aria-label="Editar">${ic("edit", "sm")}</button><button class="icbtn" data-gdel="${esc(x.id)}" aria-label="Excluir">${ic("trash", "sm")}</button></div>`).join("") + (lista.length > 30 && !st.all ? `<button class="btn ghost" id="g-all">Ver todos (${lista.length})</button>` : "") : `<div class="empty">${st.q || st.cat ? "Nada encontrado com esse filtro." : "Sem lançamentos neste mês."}</div>`;
     return h + "</div>";
   }
 
@@ -162,6 +165,19 @@ export function makeGastos(c) {
     if (mudou) store.set("gastos_saldos", loc);
   }
 
+  /** Visões que só aparecem quando há dados: por meio de pagamento, por lote, dedutíveis do ano e parcelas já assumidas. */
+  function extrasCard(L) {
+    const meios = porMeio(L, st.ym), lotes = porLote(L, st.ym), ded = dedutiveis(L, st.ym.slice(0, 4)), comp = comprometido(L, hojeBRT());
+    if (!meios.length && !lotes.length && !ded.itens.length && !comp.length) return "";
+    const linha = (k, v) => `<div class="gc-h"><span>${esc(k)}</span><b class="num">${fBRL(v)}</b></div>`, sub2 = (t) => `<div class="mut" style="font-size:12.5px;margin:10px 0 4px;font-weight:700">${t}</div>`;
+    let h = secTitle(`${ic("chart", "sm")} Visões do mês`) + `<div class="card">`;
+    if (meios.length) h += sub2("Por meio de pagamento") + meios.map((x) => linha(x.k, x.v)).join("");
+    if (lotes.length) h += sub2("Por lote ou galpão") + lotes.map((x) => linha(x.k, x.v)).join("");
+    if (comp.length) h += sub2("Parcelas já assumidas (próximos meses)") + comp.map((x) => linha(cap(ymLabel(x.ym)), x.v)).join("");
+    if (ded.itens.length) h += sub2(`Dedutíveis em ${st.ym.slice(0, 4)}`) + linha(`${ded.itens.length} lançamento${ded.itens.length > 1 ? "s" : ""} marcados`, ded.total) + `<div class="mut" style="font-size:12px;margin-top:4px">Guarde os comprovantes: ajudam na declaração do imposto de renda.</div>`;
+    return h + "</div>";
+  }
+
   function vGastos() {
     const L = vis(), S = summarize(L, st.ym), hoje = hojeBRT().slice(0, 7);
     const kp = (t, v, cls = "") => `<div class="stat"><small>${t}</small><b class="num ${cls}">${fBRL(v)}</b></div>`;
@@ -170,18 +186,18 @@ export function makeGastos(c) {
     h += `<div class="grid2" style="margin-bottom:10px">${kp("Receitas", S.receitas, "up")}${kp("Gastos", S.gastos)}${kp("Investido", S.investido)}${kp("Saldo", S.saldo, S.saldo >= 0 ? "up" : "down")}</div>`;
     h += saldoCard() + (st.conta === "e" ? "" : limiteCard(S));
     h += `<div class="mut" style="font-size:12.5px;line-height:1.5;margin:0 4px 6px">Escreva na barra de baixo, como falaria: "uber 23,50 ontem", "+1500 salário", "dia 12 farmácia 37".</div>` + secTitle(`${ic("plus", "sm")} Anotar com os campos`) + `<div class="card">${formCard()}</div>`;
-    h += categoriasCard(L) + graficoCard(L) + metaCard(L, S) + fixosCard() + lancamentosCard(L, S);
+    h += categoriasCard(L) + extrasCard(L) + graficoCard(L) + metaCard(L, S) + fixosCard() + lancamentosCard(L, S);
     h += secTitle(`${ic("down", "sm")} Relatório e planilha`) + `<div class="card"><button class="btn" id="g-pdf" style="margin-top:0">Relatório de ${esc(ymLabel(st.ym))} (PDF)</button><button class="btn ghost" id="g-csv">Planilha do mês (CSV, abre no Excel)</button><button class="btn ghost" id="g-csv-all">Planilha com tudo</button>${st.status?.linked ? '<button class="btn ghost" id="g-send">Enviar o relatório para o meu chat</button>' : ""}</div>`;
     h += secTitle(`${ic("user", "sm")} Assessor de gastos no chat`) + assessorCard();
     return h;
   }
 
   // ------------------------------------------------------------ ações
-  function addFromParsed(p, w) {
-    const it = { id: newId(), ts: p.date, v: p.v, c: p.c, d: p.d, tp: p.tp, src: "app", deleted: 0, ...(w === "e" ? { w: "e" } : {}) };
-    save([...list(), it]); touch(it.id); checaAlertas();
+  function addFromParsed(p, w, ex = {}) {
+    const its = expandir(p, ex, { src: "app", deleted: 0, ...(w === "e" ? { w: "e" } : {}) });
+    save([...list(), ...its]); its.forEach((x) => touch(x.id)); checaAlertas();
     st.ym = p.date.slice(0, 7);
-    toast(`${p.tp === "receita" ? "Receita" : "Gasto"} anotado: ${fBRL(p.v)} · ${catOf(p.c, p.tp).n}${w === "e" ? " · Empresa" : ""}`);
+    toast(its.length > 1 ? `Parcelado em ${its.length}x de ${fBRL(its[0].v)} · ${catOf(p.c, p.tp).n}` : `${p.tp === "receita" ? "Receita" : "Gasto"} anotado: ${fBRL(p.v)} · ${catOf(p.c, p.tp).n}${w === "e" ? " · Empresa" : ""}${ex.m ? " · " + ex.m : ""}${ex.l ? " · " + ex.l : ""}`);
   }
 
   function bindGastos(render) {
@@ -203,13 +219,13 @@ export function makeGastos(c) {
     }
     document.querySelectorAll("[data-gm]").forEach((b) => b.addEventListener("click", () => { st.ym = ymAdd(st.ym, +b.dataset.gm); st.all = false; render(); }));
     document.querySelectorAll("[data-gtp]").forEach((b) => b.addEventListener("click", () => { st.tp = b.dataset.gtp; if (st.editId) { const l = list(), e = l.find((x) => x.id === st.editId); if (e) e.tp = st.tp; } const dv = { v: $("#g-v")?.value, d: $("#g-d")?.value, dt: $("#g-dt")?.value }; render(); const set = (id, v) => { const el = $(id); if (el && v) el.value = v; }; set("#g-v", dv.v); set("#g-d", dv.d); set("#g-dt", dv.dt); $("#g-det").open = true; }));
-    const quick = () => { const pc = parseConta($("#gq").value), p = parseMessage(pc.text, hojeBRT()); if (!p.ok) return toast("Não achei o valor. Ex.: gastei 45 no mercado"); addFromParsed(p, pc.w || (st.conta === "e" ? "e" : "p")); render(); };
+    const quick = () => { const pc = parseConta($("#gq").value), px = parseExtras(pc.text), p = parseMessage(px.text, hojeBRT()); if (!p.ok) return toast("Não achei o valor. Ex.: gastei 45 no mercado"); addFromParsed(p, pc.w || (st.conta === "e" ? "e" : "p"), px); render(); };
     $("#gq-ok")?.addEventListener("click", quick); $("#gq")?.addEventListener("keydown", (e) => { if (e.key === "Enter") quick(); });
     $("#g-save")?.addEventListener("click", async () => {
       const v = numCore($("#g-v").value), ts = $("#g-dt").value || hojeBRT(); if (!v || v <= 0) return toast("Digite o valor.");
       const tp = st.editId ? list().find((x) => x.id === st.editId)?.tp || st.tp : st.tp, file = $("#g-foto")?.files?.[0]; let id;
-      if (st.editId) { const l = list(), e = l.find((x) => x.id === st.editId); Object.assign(e, { v, ts, d: $("#g-d").value.trim(), c: $("#g-c").value, tp, w: $("#g-w")?.value === "e" ? "e" : undefined }); save(l); touch(e.id); id = e.id; st.editId = null; toast("Lançamento atualizado."); }
-      else { const it = { id: newId(), ts, v, c: $("#g-c").value, d: $("#g-d").value.trim(), tp, src: "app", deleted: 0, ...($("#g-w")?.value === "e" ? { w: "e" } : {}) }; save([...list(), it]); touch(it.id); id = it.id; toast("Lançamento salvo."); }
+      if (st.editId) { const l = list(), e = l.find((x) => x.id === st.editId); Object.assign(e, { v, ts, d: $("#g-d").value.trim(), c: $("#g-c").value, tp, w: $("#g-w")?.value === "e" ? "e" : undefined, m: $("#g-m")?.value.trim().slice(0, 24) || undefined, l: $("#g-l")?.value.trim().slice(0, 30) || undefined, dd: $("#g-dd")?.checked ? 1 : undefined }); save(l); touch(e.id); id = e.id; st.editId = null; toast("Lançamento atualizado."); }
+      else { const parc = Math.round(+$("#g-parc")?.value) || 0, its = expandir({ date: ts, v, c: $("#g-c").value, d: $("#g-d").value.trim(), tp }, { m: $("#g-m")?.value.trim().slice(0, 24), l: $("#g-l")?.value.trim().slice(0, 30), dd: $("#g-dd")?.checked, parc: parc >= 2 && parc <= 60 ? parc : 0 }, { src: "app", deleted: 0, ...($("#g-w")?.value === "e" ? { w: "e" } : {}) }); save([...list(), ...its]); its.forEach((x) => touch(x.id)); id = its[0].id; toast(its.length > 1 ? `Parcelado em ${its.length}x de ${fBRL(its[0].v)}.` : "Lançamento salvo."); }
       if (file) { try { await fotoPut(id, await comprime(file)); } catch { toast("Salvei o lançamento, mas não consegui guardar a foto."); } }
       checaAlertas(); st.ym = ts.slice(0, 7); render();
     });

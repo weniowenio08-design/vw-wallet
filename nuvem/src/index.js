@@ -1,7 +1,7 @@
 // Uiraçu nuvem (Cloudflare Worker): webhook do WhatsApp, API do app (sincronização, vínculo, ajustes, push) e agendador.
 import { json, HttpError, corsHeaders, sha256hex, safeEq, randCode, maskWa, digits } from "./util.js";
 import { verifySignature, sendTemplate } from "./wa.js";
-import { onMessage, onTelegram, agendados, pushUser, enviarRelatorio, upsertStmt } from "./bot.js";
+import { onMessage, onTelegram, agendados, pushUser, enviarRelatorio, upsertStmt, hidrata } from "./bot.js";
 import { subValida } from "./push.js";
 import { iaLigada } from "./ai.js";
 import { cleanItem } from "../../docs/gastos-core.js";
@@ -81,8 +81,8 @@ async function api(req, env, ctx, url) {
     const now = Date.now(), b = await readJson(req), since = Math.max(0, +b.since || 0);
     const stmts = []; for (const raw of (Array.isArray(b.items) ? b.items : []).slice(0, 500)) { const it = cleanItem(raw); if (it) stmts.push(upsertStmt(env, user.id, it)); }
     if (stmts.length) await env.DB.batch(stmts);
-    const { results } = await env.DB.prepare("SELECT id,ts,v,c,d,tp,src,deleted,upd,w FROM expenses WHERE user=? AND upd>? ORDER BY upd LIMIT 2000").bind(user.id, since).all();
-    return json({ now: results.length === 2000 ? results[results.length - 1].upd : now, items: results });
+    const { results } = await env.DB.prepare("SELECT id,ts,v,c,d,tp,src,deleted,upd,w,x FROM expenses WHERE user=? AND upd>? ORDER BY upd LIMIT 2000").bind(user.id, since).all();
+    return json({ now: results.length === 2000 ? results[results.length - 1].upd : now, items: hidrata(results) });
   }
   if (p === "/api/settings" && req.method === "POST") {
     // só muda o que veio no pedido (o app manda os campos que alterou)

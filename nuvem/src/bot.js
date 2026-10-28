@@ -1,6 +1,6 @@
 // Cérebro do bot de gastos: entende mensagens do WhatsApp, anota no banco, responde e envia relatórios.
-import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, norm, parseConta, contaDe, contaNome, valorBR } from "../../docs/gastos-core.js";
-import { saldoConta } from "../../docs/gastos-plus.js";
+import { CATS, CATS_REC, catOf, parseMessage, summarize, toCsv, newId, hojeBRT, ymAdd, ymLabel, dBR, fBRL, norm, parseConta, contaDe, contaNome, valorBR, parseExtras, expandir, EXTRAS } from "../../docs/gastos-core.js";
+import { saldoConta, buscaTermo } from "../../docs/gastos-plus.js";
 import { relatorioPdf } from "../../docs/relatorio.js";
 import * as WA from "./wa.js";
 import * as TG from "./tg.js";
@@ -27,6 +27,10 @@ ${tg ? "_Toque em um /comando para usar. Toque em um texto em destaque para copi
 \`+1500 salário\`
 \`empresa ração 3200\`
 \`diesel 450 granja\`
+\`notebook 3000 em 6x no nubank\`
+\`ração 3200 lote 3\`
+\`consulta médica 250 dedutível\`
+Várias linhas de uma vez: uma por linha
 🎙️ Áudio: conte o gasto falando
 🧾 Foto: nota fiscal ou comprovante de Pix
 
@@ -36,6 +40,7 @@ ${c("ultimos", "últimos", "últimos lançamentos")}
 ${c("saldo", "saldo", "quanto sobra em cada conta")}
 ${c("relatorio", "relatório", "PDF do mês")}
 ${c("planilha", "planilha", "planilha para o Excel")}
+\`quanto gastei com ração\` · \`quanto gastei no nubank\`
 \`resumo empresa\` · \`relatório setembro\`
 
 *🏢 Empresa e pessoal*
@@ -77,13 +82,16 @@ const AJUDA = `Olá! Eu anoto seus gastos. 🦅
 • *relatório automático dia 30* · *parar relatório*`;
 
 // ------------------------------------------------------------------ banco
-const upsert = (env, user, it) => env.DB.prepare("INSERT INTO expenses(user,id,ts,v,c,d,tp,src,deleted,upd,w) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user,id) DO UPDATE SET ts=excluded.ts,v=excluded.v,c=excluded.c,d=excluded.d,tp=excluded.tp,deleted=excluded.deleted,upd=excluded.upd,w=excluded.w").bind(user, it.id, it.ts, it.v, it.c, it.d, it.tp, it.src, it.deleted ? 1 : 0, Date.now(), it.w === "e" ? "e" : "p");
+const extrasJson = (it) => { const e = {}; for (const k of EXTRAS) if (it[k] != null) e[k] = it[k]; return Object.keys(e).length ? JSON.stringify(e) : null; };
+/** Linhas do banco -> lançamentos com os extras (m, l, dd, pg) de volta como campos normais. */
+export const hidrata = (rows) => rows.map(({ x, ...r }) => { if (x) { try { const e = JSON.parse(x); for (const k of EXTRAS) if (e[k] != null) r[k] = e[k]; } catch {} } return r; });
+const upsert = (env, user, it) => env.DB.prepare("INSERT INTO expenses(user,id,ts,v,c,d,tp,src,deleted,upd,w,x) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user,id) DO UPDATE SET ts=excluded.ts,v=excluded.v,c=excluded.c,d=excluded.d,tp=excluded.tp,deleted=excluded.deleted,upd=excluded.upd,w=excluded.w,x=excluded.x").bind(user, it.id, it.ts, it.v, it.c, it.d, it.tp, it.src, it.deleted ? 1 : 0, Date.now(), it.w === "e" ? "e" : "p", extrasJson(it));
 export async function salvarItens(env, user, itens) { if (itens.length) await env.DB.batch(itens.map((it) => upsert(env, user, it))); }
 export const upsertStmt = upsert;
 /** Lançamentos do mês e do mês anterior (o relatório compara os dois). */
 export async function doMes(env, user, ym) {
-  const { results } = await env.DB.prepare("SELECT id,ts,v,c,d,tp,src,deleted,w FROM expenses WHERE user=? AND deleted=0 AND ts>=? AND ts<?").bind(user, ymAdd(ym, -1) + "-01", ymAdd(ym, 1) + "-01").all();
-  return results;
+  const { results } = await env.DB.prepare("SELECT id,ts,v,c,d,tp,src,deleted,w,x FROM expenses WHERE user=? AND deleted=0 AND ts>=? AND ts<?").bind(user, ymAdd(ym, -1) + "-01", ymAdd(ym, 1) + "-01").all();
+  return hidrata(results);
 }
 const lerSaldos = (user) => { try { return JSON.parse(user.saldos || "{}") || {}; } catch { return {}; } };
 async function saldoAtual(env, user, w) {
@@ -100,7 +108,7 @@ function resumoTxt(S, conta) {
   if (S.porCat.length) t += "\n\nMaiores categorias:\n" + S.porCat.slice(0, 5).map((c) => `• ${c.n} ${fBRL(c.v)} (${Math.round(c.pct * 100)}%)`).join("\n");
   return t;
 }
-function linhaItem(it, hoje) { const c = catOf(it.c, it.tp); return `${it.tp === "receita" ? "💰" : "✅"}${contaDe(it) === "e" ? "🏢" : ""} ${fBRL(it.v)} · ${c.n}${it.d && it.d !== c.n ? " · " + it.d : ""} · ${rel(it.ts, hoje)}`; }
+function linhaItem(it, hoje) { const c = catOf(it.c, it.tp); return `${it.tp === "receita" ? "💰" : "✅"}${contaDe(it) === "e" ? "🏢" : ""} ${fBRL(it.v)} · ${c.n}${it.d && it.d !== c.n ? " · " + it.d : ""} · ${rel(it.ts, hoje)}${it.m ? " · 💳 " + it.m : ""}${it.l ? " · 🏷️ " + it.l : ""}${it.dd ? " · dedutível" : ""}`; }
 
 /** Mês citado na frase: "setembro", "mês passado", "09/2026". Padrão: mês atual. */
 export function parseMes(n, hoje) {
@@ -223,7 +231,8 @@ export async function onTelegram(env, upd) {
 
 async function confirmar(env, user, from, itens) {
   const hoje = hojeBRT(), ym = itens[0].ts.slice(0, 7), w = contaDe(itens[0]), saldos = lerSaldos(user), usaContas = w === "e" || user.modo === "e" || Object.keys(saldos).length > 0, S = summarize(await doMes(env, user.id, ym), ym, usaContas ? w : undefined);
-  let t = itens.map((it) => linhaItem(it, hoje)).join("\n");
+  let t = (itens[0].pg ? [itens[0]] : itens).map((it) => linhaItem(it, hoje)).join("\n");
+  if (itens[0].pg) t += `\n📆 Parcelado em ${itens[0].pg.n}x de ${fBRL(itens[0].v)}, até ${ymLabel(itens.at(-1).ts.slice(0, 7))}`;
   t += `\n\n${cap(ymLabel(ym).split(" ")[0])}${usaContas ? " · " + contaNome(w) : ""}: gastos ${fBRL(S.gastos)}` + (S.receitas ? ` · receitas ${fBRL(S.receitas)}` : "");
   const sd = await saldoAtual(env, user, w); if (sd != null) t += `\n💼 Em conta (${contaNome(w)}): *${fBRL(sd)}*`;
   if (user.modo === "e") t += "\n_Modo empresa ligado. Digite *modo pessoal* para voltar._";
@@ -261,8 +270,8 @@ Para continuar, responda *confirmo* (vale 5 minutos). Qualquer outra mensagem ca
     return sendText(env, from, `↩️ Apaguei: ${fBRL(u.v)} · ${u.d || catOf(u.c, u.tp).n}`);
   }
   if (/^(ultimos|ultimas|lista|historico|extrato)( \d+)?$/.test(n)) {
-    const { results } = await env.DB.prepare("SELECT ts,v,c,d,tp,w FROM expenses WHERE user=? AND deleted=0 ORDER BY ts DESC, upd DESC LIMIT 10").bind(user.id).all();
-    return sendText(env, from, results.length ? "🧾 *Últimos lançamentos*\n" + results.map((it) => linhaItem(it, hoje)).join("\n") : "Ainda não há lançamentos.");
+    const { results } = await env.DB.prepare("SELECT ts,v,c,d,tp,w,x FROM expenses WHERE user=? AND deleted=0 AND ts<=? ORDER BY ts DESC, upd DESC LIMIT 10").bind(user.id, hoje).all();
+    return sendText(env, from, results.length ? "🧾 *Últimos lançamentos*\n" + hidrata(results).map((it) => linhaItem(it, hoje)).join("\n") : "Ainda não há lançamentos.");
   }
   let mm;
   if ((mm = /^categoria (.+)$/.exec(n))) {
@@ -302,16 +311,32 @@ Para continuar, responda *confirmo* (vale 5 minutos). Qualquer outra mensagem ca
     }
     if (mm[1] || !/^saldo$/.test(n)) return sendText(env, from, "Ainda não sei quanto você tem. Diga, por exemplo: *saldo empresa 100 mil* e *saldo pessoal 20000*.");
   }
+  if ((mm = /^quanto (?:eu )?(?:gastei|paguei|foi|deu|gasto)\s+(?:com |em |no |na |nos |nas |de |do |da |pra |para )?(.+)$/.exec(n))) {
+    const ym = parseMes(n, hoje);
+    let termo = mm[1].replace(/\b(?:este|esse|neste|nesse|no) mes\b|\b(?:mes passado|mes anterior|ultimo mes)\b|\b\d{1,2}\/\d{2,4}\b|\b(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|\b(?:hoje|ate agora|agora)\b/g, " ").replace(/\s+/g, " ").trim();
+    const pcq = parseConta(termo); termo = pcq.text;
+    if (termo && !/^(no|em|de|do|da)$/.test(termo)) {
+      const pal = termo.split(" "), bonito = text.split(/\s+/).filter((w) => pal.includes(norm(w))).join(" ") || termo;   // mostra a palavra como foi escrita (com acento)
+      const todos = (await doMes(env, user.id, ym)).filter((x) => !pcq.w || contaDe(x) === pcq.w), ach = buscaTermo(todos, ym, termo), tot = ach.reduce((s, x) => s + x.v, 0);
+      if (!ach.length) return sendText(env, from, `Não achei gastos com *${bonito}* em ${ymLabel(ym)}.`);
+      return sendText(env, from, `🔎 *${bonito}* em ${ymLabel(ym)}: *${fBRL(tot)}* (${ach.length} lançamento${ach.length > 1 ? "s" : ""})\n` + ach.sort((a, b) => (a.ts < b.ts ? 1 : -1)).slice(0, 6).map((it) => linhaItem(it, hoje)).join("\n"));
+    }
+  }
   if (/^(resumo|saldo|quanto gastei|balanco)\b/.test(n)) { const ym = parseMes(n, hoje), its = await doMes(env, user.id, ym), cw = new RegExp("\\b" + NC + "\\b").exec(n);
     if (cw) { const w = /pessoal/.test(cw[1]) ? "p" : "e"; return sendText(env, from, resumoTxt(summarize(its, ym, w), contaNome(w))); }
     if (its.some((x) => contaDe(x) === "e" && x.ts.startsWith(ym))) return sendText(env, from, resumoTxt(summarize(its, ym, "p"), "Pessoal") + "\n\n" + resumoTxt(summarize(its, ym, "e"), "Empresa"));
     return sendText(env, from, resumoTxt(summarize(its, ym))); }
 
-  const pc = parseConta(text), wl = pc.w || (user.modo === "e" ? "e" : "p"), p = parseMessage(pc.text, hoje);
-  if (p.ok) {
-    const it = { id: newId(), ts: p.date, v: p.v, c: p.c, d: p.d, tp: p.tp, src: "wa", w: wl };
-    await salvarItens(env, user.id, [it]); return confirmar(env, user, from, [it]);
+  const wlDef = user.modo === "e" ? "e" : "p";
+  const lancar = (linha, padrao = wlDef) => { const c1 = parseConta(linha), x1 = parseExtras(c1.text), p1 = parseMessage(x1.text, hoje); return p1.ok ? expandir(p1, x1, { src: "wa", w: c1.w || padrao }) : null; };
+  const partes = text.split(/\n|;/).map((s) => s.trim()).filter(Boolean);
+  if (partes.length >= 2) {   // várias linhas numa mensagem só: "ração 3200 / diesel 450 / vacina 600"
+    const w0 = parseConta(partes[0]).w || wlDef;   // "empresa" na primeira linha vale para as outras
+    const todos = partes.flatMap((l) => lancar(l, w0) || []);
+    if (todos.length) { await salvarItens(env, user.id, todos); return confirmar(env, user, from, todos); }
   }
+  const pc = parseConta(text), wl = pc.w || wlDef, its1 = lancar(text);
+  if (its1) { await salvarItens(env, user.id, its1); return confirmar(env, user, from, its1); }
   if (iaLigada(env) && /\d/.test(text) && (await usaIa(env, user))) {
     const r = await extrairTexto(env, pc.text, hoje), its = r.itens.map((x) => ({ ...x, w: wl }));
     if (its.length) { await salvarItens(env, user.id, its); return confirmar(env, user, from, its); }
