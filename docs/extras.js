@@ -164,7 +164,7 @@ export function makeExtras(c) {
   function lockScreen() {
     const cfg = store.get("pin", null); if (!cfg || document.getElementById("lock")) return;
     const el = document.createElement("div"); el.id = "lock"; let buf = "";
-    el.innerHTML = `<div class="lk"><img src="icons/logo.svg" width="64" height="64" alt=""><h3>Uiraçu</h3><div class="mut">Digite o seu PIN</div><div class="dots">${Array.from({ length: cfg.n }, () => "<i></i>").join("")}</div><div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, "", 0, "⌫"].map((k) => `<button data-k="${k}" ${k === "" ? "disabled" : ""}>${k}</button>`).join("")}</div><button class="back" id="lk-forgot">Esqueci o PIN</button></div>`;
+    el.innerHTML = `<div class="lk"><img src="icons/logo.png" height="84" style="width:auto" alt=""><h3>Uiraçu</h3><div class="mut">Digite o seu PIN</div><div class="dots">${Array.from({ length: cfg.n }, () => "<i></i>").join("")}</div><div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, "", 0, "⌫"].map((k) => `<button data-k="${k}" ${k === "" ? "disabled" : ""}>${k}</button>`).join("")}</div><button class="back" id="lk-forgot">Esqueci o PIN</button></div>`;
     document.body.appendChild(el);
     const dots = () => el.querySelectorAll(".dots i").forEach((d, i) => d.classList.toggle("on", i < buf.length));
     el.addEventListener("click", async (e) => {

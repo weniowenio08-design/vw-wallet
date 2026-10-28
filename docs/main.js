@@ -8,6 +8,17 @@ const store = {
   get(k, d) { try { const v = JSON.parse(localStorage.getItem("vw:" + k)); return v ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem("vw:" + k, JSON.stringify(v)); } catch {} },
 };
+// ---- tema: automático (segue o celular), claro ou escuro
+const temaEscolhido = () => store.get("tema", "auto");
+const temaEscuro = () => { const t = temaEscolhido(); return t === "escuro" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches); };
+function aplicaTema() {
+  const t = temaEscolhido(), r = document.documentElement;
+  if (t === "auto") r.removeAttribute("data-tema"); else r.setAttribute("data-tema", t);
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
+  const m = document.createElement("meta"); m.name = "theme-color"; m.content = temaEscuro() ? "#0D0F10" : "#F6F3E6"; document.head.appendChild(m);
+  const b = document.getElementById("btn-tema"); if (b && typeof ic === "function") b.innerHTML = ic(temaEscuro() ? "sun" : "moon");
+}
+try { aplicaTema(); matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (temaEscolhido() === "auto") aplicaTema(); }); } catch {}
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fN = (n, d = 2) => (n == null || isNaN(n) ? "—" : n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d }));
 const fBRL = (n) => (n == null || isNaN(n) ? "—" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
@@ -52,6 +63,8 @@ const IC = {
   shield: "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z",
   down: "M7 5v12M3 13l4 4 4-4M17 19V7M13 11l4-4 4 4",
   receipt: "M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3",
+  sun: "M12 8a4 4 0 100 8 4 4 0 000-8zM12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4",
+  moon: "M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z",
 };
 const ic = (n, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
 const icFill = (n) => `<svg class="ic fill" viewBox="0 0 24 24" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
@@ -735,7 +748,7 @@ function bindPerfil() {
 // ------------------------------------------------------------------ MAIS
 function vMais() {
   const T = { ...DEF_T, ...store.get("metas", {}) }, b = D.backtest, topic = store.get("ntfy", ""), pl = myPlats();
-  let h = shareCard() + secTitle(`${ic("bell", "sm")} Avisos do Uiraçu`) + `<div class="card" style="line-height:1.55;font-size:14.5px"><div id="push-box"><span class="mut">Verificando…</span></div></div>` + secTitle(`${ic("bell", "sm")} Plano B: avisos pelo ntfy`) + `<div class="card" style="line-height:1.55;font-size:14.5px">Se os avisos do próprio app não estiverem ligados, o Uiraçu ainda avisa pelo ntfy:<br>1. Instale o app <b>ntfy</b> (Play Store, F-Droid ou App Store).<br>2. Toque em <b>+</b> e assine o tópico secreto abaixo.<br>3. Nos Ajustes do Oppo, deixe o ntfy sem restrição de bateria e com início automático.<label>Seu tópico secreto</label><input id="ntfy" value="${esc(topic)}" placeholder="cole o tópico que o Uiraçu gerou"><div id="ntf-links"></div><button class="btn ghost" id="ntf-perm">Permitir avisos também aqui no app</button></div>`;
+  let h = shareCard() + secTitle(`${ic(temaEscuro() ? "moon" : "sun", "sm")} Aparência`) + `<div class="card"><div class="seg" id="tema-seg">${[["auto", "Automático"], ["claro", "Claro"], ["escuro", "Escuro"]].map(([k, n]) => `<button data-tema="${k}" class="${temaEscolhido() === k ? "on" : ""}">${n}</button>`).join("")}</div><div class="mut" style="font-size:12.5px;line-height:1.5">Automático segue o modo do seu celular. Claro usa o fundo creme; escuro usa o fundo preto.</div></div>` + secTitle(`${ic("bell", "sm")} Avisos do Uiraçu`) + `<div class="card" style="line-height:1.55;font-size:14.5px"><div id="push-box"><span class="mut">Verificando…</span></div></div>` + secTitle(`${ic("bell", "sm")} Plano B: avisos pelo ntfy`) + `<div class="card" style="line-height:1.55;font-size:14.5px">Se os avisos do próprio app não estiverem ligados, o Uiraçu ainda avisa pelo ntfy:<br>1. Instale o app <b>ntfy</b> (Play Store, F-Droid ou App Store).<br>2. Toque em <b>+</b> e assine o tópico secreto abaixo.<br>3. Nos Ajustes do Oppo, deixe o ntfy sem restrição de bateria e com início automático.<label>Seu tópico secreto</label><input id="ntfy" value="${esc(topic)}" placeholder="cole o tópico que o Uiraçu gerou"><div id="ntf-links"></div><button class="btn ghost" id="ntf-perm">Permitir avisos também aqui no app</button></div>`;
   h += secTitle(`${ic("wallet", "sm")} Minhas plataformas`) + `<div class="card"><div class="chips" id="pl-chips" style="margin:0 0 10px">${pl.map((p) => `<span class="chip on">${esc(p)} <button data-rmpl="${esc(p)}" aria-label="Remover" style="border:0;background:none;color:inherit;font-weight:800;cursor:pointer">×</button></span>`).join("") || '<span class="mut">Nenhuma ainda.</span>'}</div><label>Adicionar plataforma (digite as primeiras letras)</label><div><input id="pl-in" placeholder="ex.: xp, nu, rico, revolut…" autocomplete="off"></div><div class="mut" style="font-size:12px;margin-top:8px;line-height:1.5">O app mostra, para cada classe, em quais das suas plataformas dá para comprar. Confirme no app de cada uma: as ofertas mudam.</div></div>`;
   h += secTitle(`${ic("target", "sm")} Metas da carteira (%)`) + `<div class="card"><button class="btn" id="meta-auto" style="margin-top:0">${ic("user", "sm")} Gerar metas pelo meu perfil</button><div class="mut" style="font-size:12px;margin-top:6px">Ou ajuste à mão (a soma vira 100%):</div><div class="grid2">${CLS.map(([k, n]) => `<div><label>${n}</label><input data-meta="${k}" inputmode="decimal" value="${T[k]}"></div>`).join("")}</div><button class="btn ghost" id="meta-save">Salvar metas</button></div>`;
   h += secTitle(`${ic("book", "sm")} O que o histórico mostra`) + `<div class="card" style="font-size:14.5px;line-height:1.55">`;
@@ -744,11 +757,12 @@ function vMais() {
   h += X.maisExtras();
   h += secTitle(`${ic("book", "sm")} Dicionário do investidor`) + `<div class="card"><input id="dic-q" placeholder="Buscar: CDB, Selic, FII, RSI…" autocomplete="off"><div id="dic-list" style="margin-top:8px">${vDicionario()}</div></div>`;
   h += secTitle(`${ic("shield", "sm")} Meus dados e backup`) + dados.dadosCard();
-  h += `<div class="about"><img src="icons/logo.svg" alt="" width="44" height="44"><div><b>Uiraçu</b><div class="mut" style="font-size:12px">Versão 2.0 · material de estudo, gratuito</div></div></div><p class="warn">O Uiraçu é uma ferramenta de estudo. Não é recomendação personalizada nem substitui um profissional credenciado. Preços e dividendos vêm de fontes públicas com atraso e podem ter erros. Regras de imposto podem mudar. A decisão é sempre sua.</p>`;
+  h += `<div class="about"><img src="icons/logo.png" alt="" height="56" style="width:auto"><div><b>Uiraçu</b><div class="mut" style="font-size:12px">Versão 2.0 · material de estudo, gratuito</div></div></div><p class="warn">O Uiraçu é uma ferramenta de estudo. Não é recomendação personalizada nem substitui um profissional credenciado. Preços e dividendos vêm de fontes públicas com atraso e podem ter erros. Regras de imposto podem mudar. A decisão é sempre sua.</p>`;
   return h;
 }
 function bindMais() {
   X.bindMaisExtras(render); bindShare(); G.pushBox($("#push-box"), render);
+  document.querySelectorAll("#tema-seg [data-tema]").forEach((b) => b.addEventListener("click", () => { store.set("tema", b.dataset.tema); aplicaTema(); render(); }));
   $("#ntfy")?.addEventListener("change", (e) => store.set("ntfy", e.target.value.trim()));
   $("#dic-q")?.addEventListener("input", (e) => { $("#dic-list").innerHTML = vDicionario(e.target.value); });
   $("#dic-list")?.addEventListener("click", (e) => { if (e.target.id === "dic-more") $("#dic-list").innerHTML = vDicionario("", true); });
@@ -896,6 +910,8 @@ function boot() {
   document.addEventListener("error", (e) => { if (e.target?.tagName === "IMG" && e.target.closest?.(".logo")) e.target.remove(); }, true);
   $("#tabs").innerHTML = [["hoje", "home", "Hoje"], ["mercado", "chart", "Mercado"], ["noticias", "news", "Notícias"], ["carteira", "wallet", "Carteira"], ["gastos", "receipt", "Gastos"], ["mais", "grid", "Mais"]].map(([k, i, t], n) => `<button data-tab="${k}" class="${n === 0 ? "on" : ""}">${ic(i)}<span>${t}</span><span class="pip"></span></button>`).join("");
   $("#btn-search").innerHTML = ic("search");
+  $("#btn-tema").innerHTML = ic(temaEscuro() ? "sun" : "moon");
+  $("#btn-tema").addEventListener("click", () => { store.set("tema", temaEscuro() ? "claro" : "escuro"); aplicaTema(); if (location.hash === "#/mais") render(); });
   $("#s-back").innerHTML = ic("back");
   $("#sh-close").addEventListener("click", closeTerm); $("#sheet .bk").addEventListener("click", closeTerm);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeTerm(); closeSearch(); } if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".q")) { e.preventDefault(); openTerm(e.target.dataset.term); } });
