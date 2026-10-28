@@ -3,6 +3,7 @@
 import { makeExtras } from "./extras.js";
 import { makeDados } from "./dados.js";
 import { makeGastos } from "./gastos.js";
+import { makePatrimonio } from "./patrimonio.js";
 const $ = (s, el = document) => el.querySelector(s);
 const store = {
   get(k, d) { try { const v = JSON.parse(localStorage.getItem("vw:" + k)); return v ?? d; } catch { return d; } },
@@ -334,7 +335,7 @@ function openRegime() {
 }
 function vHoje() {
   const s = D.summary, R = REGIME[s.regime.level], c = s.context, m = s.macro, fav = favs();
-  let h = welcomeCard() + dados.backupBanner() + X.aporteBanner() + helloRow() + gastosCard() + sinaisCard(posLive(), true);
+  let h = welcomeCard() + dados.backupBanner() + X.aporteBanner() + helloRow() + gastosCard() + P.avisosHoje() + sinaisCard(posLive(), true);
   h += secTitle("Panorama") + `<div class="strip">${kpi("Selic", m.selic != null ? fN(m.selic) + "%" : "—", null, "selic")}${kpi("CDI", m.cdi != null ? fN(m.cdi) + "%" : "—", null, "cdi")}${kpi("IPCA 12m", m.ipca12 != null ? fN(m.ipca12) + "%" : "—", null, "ipca12")}${kpi("Dólar", c.usd ? "R$ " + fN(c.usd.p) : "—", c.usd?.d1, "usd")}${kpi("Ibovespa", c.ibov ? fN(c.ibov.p, 0) : "—", c.ibov?.d1, "ibov")}${kpi("S&P 500", c.sp500 ? fN(c.sp500.p, 0) : "—", c.sp500?.d1, "sp500")}</div>`;
   h += X.focusCard() + X.tesouroCard();
   if (D.digest?.text) h += secTitle("Resumo do dia") + `<div class="card" style="line-height:1.5;font-size:14.5px">${esc(D.digest.text).replace(/\n/g, "<br>")}</div>`;
@@ -561,6 +562,7 @@ function vCarteira() {
   const pos = platFilter === "todas" ? all : all.filter((p) => p.plat === platFilter);
   const { by, total } = totals(pos), tsum = Object.values(T).reduce((a, b) => a + b, 0) || 1;
   let h = secTitle("Meu patrimônio") + `<div class="card"><div class="big num">${fBRL(total)}</div><div class="mut" style="font-size:13px">${pos.length} posições${platFilter !== "todas" ? ` em ${esc(platFilter)}` : ""} · guardado só neste aparelho</div></div>`;
+  h += `<div class="card cta" data-go="#/patrimonio"><div class="cta-i">${ic("chart")}</div><div style="flex:1"><div style="font-weight:800;font-size:15px">Painel de patrimônio</div><div class="mut" style="font-size:13px;margin-top:3px">Evolução mês a mês, rentabilidade, proventos, metas, cenários e mais.</div></div><span class="badge">ABRIR</span></div>`;
   if (usedPlats.length) h += `<div class="fchips"><button data-pf="todas" class="${platFilter === "todas" ? "on" : ""}">Todas as plataformas</button>${usedPlats.map((p) => `<button data-pf="${esc(p)}" class="${platFilter === p ? "on" : ""}">${esc(p)}</button>`).join("")}</div>`;
   h += sinaisCard(all);
   h += pieCard(pos, T, total);
@@ -583,6 +585,8 @@ function vCarteira() {
   h += `<div class="card" id="f-card"${ed ? ' style="outline:2px solid var(--gold)"' : ""}><b>${ed ? "Editar posição" : "Adicionar posição"}</b><label>Classe</label><select id="f-cls">${CLS.map(([k, n]) => `<option value="${k}" ${ed ? (ed.cls === k && ed.sym !== "USD" ? "selected" : "") : pre && ((pre.type === "fii" && k === "fii") || (pre.type === "acao" && k === "acao") || (pre.type === "etf" && k === "ext")) ? "selected" : ""}>${n}</option>`).join("")}<option value="usd" ${ed?.sym === "USD" ? "selected" : ""}>Dólar (moeda)</option></select>
   <label id="f-sym-l">Código do ativo (opcional, para ações e FIIs)</label><input id="f-sym" list="syms" placeholder="ex.: KNCR11" value="${esc(ed ? ed.sym : pre?.sym || "")}"><datalist id="syms">${D.assets.map((a) => `<option value="${a.sym}">${esc(a.name)}</option>`).join("")}</datalist>
   <label>Plataforma (digite as primeiras letras)</label><div><input id="f-plat" placeholder="ex.: XP, nu, revolut…" autocomplete="off" value="${esc(ed ? ed.plat : myPlats()[0] || "")}"></div>
+  <label>Data da compra (ajuste se foi antes; serve para o cálculo de rentabilidade)</label><input id="f-dt" type="date" value="${esc(ed ? ed.dt || "" : todayBRT())}">
+  <div id="f-rf" style="display:none"><div class="grid2"><div><label>Vencimento (Tesouro ou CDB)</label><input id="f-venc" type="date" value="${esc(ed?.venc || "")}"></div><div><label>Taxa (% do CDI; no IPCA+, a taxa ao ano)</label><input id="f-taxa" inputmode="decimal" placeholder="ex.: 110" value="${ed?.taxa != null ? String(ed.taxa).replace(".", ",") : ""}"></div></div></div>
   <label>Valor investido (R$)</label><input id="f-val" inputmode="decimal" placeholder="ex.: 300" value="${ed ? String(+ed.inv.toFixed(2)).replace(".", ",") : ""}">
   <label id="f-bp-l">Preço pago por cota ou ação (R$, só para ações, FIIs e ETFs; vazio = preço de agora)</label><input id="f-bp" inputmode="decimal" placeholder="ex.: 9,85" value="${ed?.bp ? String(+ed.bp.toFixed(4)).replace(".", ",") : ""}"><div class="mut" style="font-size:12px;margin-top:6px;line-height:1.45">Com o preço pago, o app acompanha o seu lucro e avisa a boa hora de vender.</div><button class="btn" id="f-add">${ed ? "Salvar alterações" : "Salvar posição"}</button>${ed ? '<button class="btn ghost" id="f-cancel">Cancelar edição</button>' : ""}</div>`;
   return h;
@@ -593,6 +597,8 @@ function bindCarteira() {
   $("#f-cancel")?.addEventListener("click", () => { editId = null; re(); });
   const usdMode = () => { const u = $("#f-cls")?.value === "usd"; if (!$("#f-cls")) return; $("#f-sym").readOnly = u; if (u) $("#f-sym").value = "USD"; else if ($("#f-sym").value === "USD") $("#f-sym").value = ""; $("#f-sym-l").textContent = u ? "Moeda" : "Código do ativo (opcional, para ações e FIIs)"; $("#f-bp-l").textContent = u ? `Cotação que você pagou (R$ por dólar, com o spread do câmbio; vazio = cotação de agora${D.summary?.context?.usd ? ": R$ " + fN(D.summary.context.usd.p) : ""})` : "Preço pago por cota ou ação (R$, só para ações, FIIs e ETFs; vazio = preço de agora)"; $("#f-val").previousElementSibling.textContent = u ? "Valor em reais que você gastou no dólar (R$)" : "Valor investido (R$)"; };
   $("#f-cls")?.addEventListener("change", usdMode); usdMode();
+  const rfMode = () => { const e = $("#f-rf"); if (e) e.style.display = ["selic", "ipca", "cdb"].includes($("#f-cls")?.value) ? "block" : "none"; };
+  $("#f-cls")?.addEventListener("change", rfMode); rfMode();
   document.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => { editId = b.dataset.edit; re(); setTimeout(() => $("#f-card")?.scrollIntoView({ block: "start", behavior: "smooth" }), 60); }));
   $("#ap")?.addEventListener("change", (e) => { const v = num(e.target.value); if (v != null) setAporteMes(v); re(); });
   $("#ipca")?.addEventListener("change", (e) => { store.set("ipca", num(e.target.value)); re(); });
@@ -602,8 +608,10 @@ function bindCarteira() {
     const sym = $("#f-sym").value.trim().toUpperCase(), plat = $("#f-plat").value.trim();
     const pos = store.get("posicoes", []), cur = editId ? pos.find((x) => String(x.id) === String(editId)) : null;
     const isUsd = $("#f-cls").value === "usd", symX = isUsd ? "USD" : sym, px = symX ? priceOf(symX) : null, bp = px ? num($("#f-bp").value) || cur?.bp || px : null, clsX = isUsd ? "ext" : $("#f-cls").value;
-    if (cur) { Object.assign(cur, { cls: clsX, sym: symX || "", plat, value: v }); if (px) { cur.bp = bp; cur.q = v / bp; } else { delete cur.bp; delete cur.q; } store.set("posicoes", pos); editId = null; toast("Posição atualizada."); return re(); }
-    pos.push({ id: Date.now(), cls: clsX, sym: symX || "", plat, value: v, ...(px ? { bp, q: v / bp } : {}) }); store.set("posicoes", pos); toast("Posição salva."); re();
+    const ehRF = ["selic", "ipca", "cdb"].includes(clsX), dtX = $("#f-dt")?.value || "", vencX = ehRF ? $("#f-venc")?.value || "" : "", taxaX = ehRF ? num($("#f-taxa")?.value) : null;
+    const extras = (o) => { if (dtX) o.dt = dtX; else delete o.dt; if (vencX) o.venc = vencX; else delete o.venc; if (taxaX != null) o.taxa = taxaX; else delete o.taxa; return o; };
+    if (cur) { Object.assign(cur, { cls: clsX, sym: symX || "", plat, value: v }); extras(cur); if (px) { cur.bp = bp; cur.q = v / bp; } else { delete cur.bp; delete cur.q; } store.set("posicoes", pos); editId = null; toast("Posição atualizada."); return re(); }
+    pos.push(extras({ id: Date.now(), cls: clsX, sym: symX || "", plat, value: v, ...(px ? { bp, q: v / bp } : {}) })); store.set("posicoes", pos); toast("Posição salva."); re();
   });
   const auto = () => { const qa = store.get("quiz", {}); if (!QUIZ.every((q) => qa[q.k])) { toast("Responda as 9 perguntas e eu gero as metas."); location.hash = "#/perfil"; return; } store.set("metas", profileOf(qa).alloc); toast("Metas geradas pelo seu perfil."); re(); };
   $("#meta-auto2")?.addEventListener("click", auto);
@@ -889,9 +897,10 @@ async function render() {
   const view = $("#view"), hash = location.hash || "#/hoje", [, route, arg] = hash.split("/");
   document.body.classList.toggle("modo-gastos", route === "gastos");
   if (route !== "gastos") document.getElementById("gbar")?.remove();
-  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (route === "ativo" || route === "indice" || route === "noticias" ? "hoje" : route === "perfil" || route === "recomendar" ? "carteira" : route === "ferramentas" || route === "aprender" ? "mais" : route)));
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (route === "ativo" || route === "indice" || route === "noticias" ? "hoje" : route === "perfil" || route === "recomendar" || route === "patrimonio" ? "carteira" : route === "ferramentas" || route === "aprender" ? "mais" : route)));
   if (!D.summary) { view.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>'; return; }
   const s = D.summary; $("#upd").textContent = `${ago(s.updated)}`;
+  try { P.registra(); P.notifica(); } catch {}
   const rg = $("#regime"); rg.className = "rgi " + s.regime.level; rg.setAttribute("aria-label", REGIME[s.regime.level].t + ": toque para entender");
   if (route === "ativo") {
     view.innerHTML = await vAtivo(arg); hydrate(view); drawChart(arg);
@@ -922,6 +931,7 @@ async function render() {
     view.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => { if (confirm("Excluir esta posição?")) { store.set("posicoes", store.get("posicoes", []).filter((p) => String(p.id) !== b.dataset.del)); render(); } })); }
   else if (route === "ferramentas") { view.innerHTML = X.vFerramentas(); X.bindFerramentas(); }
   else if (route === "aprender") { view.innerHTML = X.vAprender(); X.bindAprender(render); }
+  else if (route === "patrimonio") { view.innerHTML = P.vPatrimonio(); P.bindPatrimonio(render); }
   else if (route === "gastos") { view.innerHTML = G.vGastos(); G.bindGastos(render); }
   else if (route === "mais") { view.innerHTML = vMais(); bindMais(); }
   else { view.innerHTML = vHoje(); hydrate(view); X.bindHoje(render); dados.bindBanner(); bindWelcome(); }
@@ -933,6 +943,7 @@ async function render() {
 const X = makeExtras({ getD: () => D, aporteMes, store, esc, fN, fBRL, secTitle, ic, num, toast, CLS, CLS_COLOR, totals, todayBRT });
 const dados = makeDados({ store, toast, ic });
 const G = makeGastos({ store, esc, ic, secTitle, toast });
+const P = makePatrimonio({ store, esc, ic, secTitle, toast, fN, todayBRT, getD: () => D, posLive, CLS, DEF_T, totals, asset, priceOf, aporteMes, aporteBase, setAporteMes, suggest, ipcaRate: () => store.get("ipca", null) ?? D.summary?.macro?.tesouro?.ipca2032 ?? null });
 let timer = null, lastRefresh = 0;
 const startTimer = () => { clearInterval(timer); timer = setInterval(refresh, 15 * 60 * 1000); };
 function boot() {

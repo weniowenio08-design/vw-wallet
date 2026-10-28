@@ -16,7 +16,7 @@ const enc = (s) => { let o = ""; for (const ch of String(s)) { const c = ch.char
 const esc = (s) => enc(s).replace(/([\\()])/g, "\\$1");
 const rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => (v / 255).toFixed(3)).join(" "); };
 
-class Pdf {
+export class Pdf {
   constructor() { this.W = 595.28; this.H = 841.89; this.pages = []; this.cur = null; this.addPage(); }
   addPage() { this.cur = []; this.pages.push(this.cur); }
   y(y) { return (this.H - y).toFixed(2); } // y medido do topo
@@ -51,7 +51,7 @@ class Pdf {
 }
 
 // ------------------------------------------------------------------ layout do relatório
-const INK = "#0D0F10", OSSO = "#F3F0E8", OLHO = "#F2A900", CINZA = "#6B7684", VERDE = "#1E7B57", VERM = "#B3261E";
+export const INK = "#0D0F10", OSSO = "#F3F0E8", OLHO = "#F2A900", CINZA = "#6B7684", VERDE = "#1E7B57", VERM = "#B3261E";
 
 /** list = todos os lançamentos; ym = "AAAA-MM"; devolve Uint8Array com o PDF. */
 export function relatorioPdf(list, ym, { geradoEm = new Date() } = {}) {
