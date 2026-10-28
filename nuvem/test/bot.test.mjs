@@ -34,6 +34,8 @@ function instalaFetch() {
     if (url.includes("graph.facebook.com") && url.endsWith("/media")) { const f = init.body.get("file"); saidas.push({ upload: f.name, bytes: new Uint8Array(await f.arrayBuffer()) }); return new Response(JSON.stringify({ id: "up1" }), { status: 200 }); }
     if (url.includes("graph.facebook.com")) return new Response(JSON.stringify({ url: "https://midia.test/x", mime_type: "audio/ogg; codecs=opus", file_size: 10 }), { status: 200 });
     if (url.startsWith("https://midia.test")) return new Response(new Uint8Array([1, 2, 3]));
+    if (url.includes("modelo-fantasma")) return new Response(JSON.stringify({ error: { message: "model not found" } }), { status: 404 });
+    if (url.includes("generativelanguage.googleapis.com/v1beta/models?")) return new Response(JSON.stringify({ models: [{ name: "models/gemini-2.0-flash-lite", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-2.5-pro", supportedGenerationMethods: ["generateContent"] }] }), { status: 200 });
     if (url.includes("generativelanguage.googleapis.com")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(gemini) }] } }] }), { status: 200 });
     if (url.startsWith("https://push.test")) { pushes.push(url); return new Response(null, { status: 201 }); }
     if (url.startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array([4, 5, 6]));
@@ -238,4 +240,12 @@ test("Telegram: relatório automático chega sem janela de 24 h e sem modelo apr
   saidas.length = 0; const r = await agendados(env, agora);
   assert.equal(r[0].modo, "janela"); assert.equal(saidas.filter((s) => s.upload).length, 2); assert.ok(saidas.every((s) => s.tg), "nada foi para o WhatsApp");
   assert.equal(linhas("SELECT pending_report p FROM users")[0].p, null);
+});
+
+test("IA: se o modelo configurado não existe (404), o servidor escolhe um flash válido e segue", async () => {
+  env.GEMINI_MODEL = "modelo-fantasma"; await vincula();
+  gemini = { transcricao: "gastei vinte no café", itens: [{ tipo: "gasto", valor: 20, data: null, descricao: "Café", categoria: "alimentacao" }] };
+  await zap({ type: "audio", audio: { id: "a1" } });
+  assert.ok(saidas.some((s) => s.type === "text" && /Entendi/.test(s.text.body)), "entendeu o áudio apesar do modelo errado");
+  assert.deepEqual(linhas("SELECT v FROM expenses").map((r) => r.v), [20]);
 });

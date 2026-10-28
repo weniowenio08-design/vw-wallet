@@ -13,6 +13,7 @@ database_id = "c41b8a84-f039-44a5-95e5-fbc2b9cd53f3"
 crons = ["0 * * * *"]
 
 [vars]
+TG_BOT_USERNAME = "UiracuGastosBot"
 APP_ORIGIN = "https://weniowenio08-design.github.io"
 MAX_USERS = "10"
 VAPID_SUBJECT = "https://weniowenio08-design.github.io/vw-wallet/"
