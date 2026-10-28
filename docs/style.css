@@ -252,9 +252,8 @@ header h1{font-size:22px;font-weight:700;text-transform:lowercase}
 @media (prefers-reduced-motion:reduce){#splash{animation:sp-auto .3s ease 1.2s forwards}#splash *,#splash::before{animation-duration:.01s!important;animation-delay:0s!important}}
 
 /* ---- modo Gastos: barra própria embaixo no lugar das abas ---- */
-body.modo-gastos #tabs{display:none}
-body.modo-gastos{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
-.gbar{position:fixed;left:0;right:0;bottom:0;z-index:7;background:var(--card);border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px;align-items:center}
+body.modo-gastos{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+.gbar{position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom));z-index:7;background:var(--card);border-top:1px solid var(--line);padding:10px 12px;display:flex;gap:8px;align-items:center}
 .gbar input{flex:1}.gbar .btn{flex:none}
 .gtop{display:flex;align-items:center;gap:10px;margin:2px 0 8px}
 .gtit{font-family:"Bricolage",system-ui,sans-serif;font-weight:700;font-size:26px;letter-spacing:-.01em}
@@ -263,3 +262,22 @@ body.modo-gastos{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
 .gdelta{font-size:12px;margin-top:3px}
 .gfoto{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px}
 .gfoto img{max-width:100%;max-height:78vh;border-radius:12px}.gfoto .btn{width:auto;padding:10px 28px}
+
+/* ---- topo enxuto, estilo app de banco */
+.rgi{width:40px;height:40px;border-radius:50%;border:0;flex:none;cursor:pointer;font:italic 800 17px Georgia,serif;display:inline-flex;align-items:center;justify-content:center;background:var(--chip);color:var(--ink)}
+.rgi.calmo{background:color-mix(in srgb,var(--up) 18%,transparent);color:var(--up)}
+.rgi.tensao{background:color-mix(in srgb,var(--gold) 30%,transparent);color:var(--goldink)}
+.rgi.estresse{background:color-mix(in srgb,var(--down) 18%,transparent);color:var(--down);box-shadow:0 0 0 2px color-mix(in srgb,var(--down) 35%,transparent)}
+.rgdot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px;background:var(--mut)}
+.rgdot.calmo{background:var(--up)}.rgdot.tensao{background:var(--gold)}.rgdot.estresse{background:var(--down)}
+.gtop{display:none}
+.gcard{background:linear-gradient(160deg,#0C314A,#185365);color:#F6F3E6;border-radius:20px;padding:18px;margin:6px 0 10px;cursor:pointer;box-shadow:var(--sh)}
+.gcard .gh{display:flex;justify-content:space-between;align-items:center;font-size:13.5px;font-weight:700;opacity:.92}
+.gcard .gh span{display:inline-flex;align-items:center;gap:6px}.gcard .gh b{color:#D4C583}
+.gcard .gv{font-size:34px;font-weight:800;letter-spacing:-.02em;margin:8px 0 6px}
+.gcard .gsub{font-size:13px;opacity:.85;line-height:1.4}
+.gprog{height:8px;border-radius:99px;background:rgba(246,243,230,.2);overflow:hidden}
+.gprog i{display:block;height:100%;background:#D4C583;border-radius:99px}
+.gprog.alerta i{background:#E8B04B}.gprog.estourou i{background:#FF7A84}
+.gcard .btn{background:#D4C583;color:#0C314A;border:0}
+.gcard .ic{stroke:currentColor}

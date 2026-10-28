@@ -239,5 +239,10 @@ export function makeGastos(c) {
 
   // chamado ao abrir o app e ao voltar para ele: puxa o que o bot anotou
   async function syncAgora() { gerarFixos(); try { if (!(await N.ativa())) { checaAlertas(); return false; } save(await N.sync(list())); gerarFixos(); checaAlertas(); return true; } catch { return false; } }
-  return { vGastos, bindGastos, syncAgora, pushBox, nuvem: N };
+  /** Resumo curto do mês corrente para o cartão da tela Hoje. */
+  function resumoMes() {
+    const ym = hojeBRT().slice(0, 7), S = summarize(list(), ym), l = lim(), sl = statusLimite(S.gastos, l);
+    return { ym, label: ymLabel(ym), gastos: S.gastos, receitas: S.receitas, saldo: S.saldo, n: S.itens.length, limite: l, p: sl ? sl.p : null, nivel: sl ? sl.nivel : null, top: S.porCat[0] || null };
+  }
+  return { vGastos, bindGastos, syncAgora, pushBox, resumoMes, nuvem: N };
 }
