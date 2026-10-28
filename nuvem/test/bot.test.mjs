@@ -67,7 +67,7 @@ async function vincula() {
   await zap(txt("vincular " + body.code));
 }
 test.beforeEach(() => {
-  env = { DB: novoDB(), WA_TOKEN: "tk", WA_PHONE_ID: "111", WA_APP_SECRET: "segredo", WA_VERIFY_TOKEN: "ver", WA_BOT_NUMBER: "+55 81 99999-0000", ALLOWED: WA, TG_BOT_TOKEN: "tgtoken", TG_WEBHOOK_SECRET: "tgsegredo", TG_BOT_USERNAME: "UiracuBot", APP_ORIGIN: "https://app.test", MAX_USERS: "2", BRAIN_SECRET: "brain", VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_JWK: JSON.stringify(vapid.privateJwk), GEMINI_API_KEY: "g", AI_DAILY_LIMIT: "3", INVITE_CODE: "convite-teste" };
+  env = { DB: novoDB(), WA_TOKEN: "tk", WA_PHONE_ID: "111", WA_APP_SECRET: "segredo", WA_VERIFY_TOKEN: "ver", WA_BOT_NUMBER: "+55 81 99999-0000", ALLOWED: WA, TG_BOT_TOKEN: "tgtoken", TG_WEBHOOK_SECRET: "tgsegredo", TG_BOT_USERNAME: "UiracuBot", APP_ORIGIN: "https://app.test", MAX_USERS: "2", BRAIN_SECRET: "brain", VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_JWK: JSON.stringify(vapid.privateJwk), GEMINI_API_KEY: "g", AI_DAILY_LIMIT: "4", INVITE_CODE: "convite-teste" };
   saidas = []; pushes = []; gemini = { transcricao: "", itens: [] }; instalaFetch();
 });
 
@@ -210,6 +210,9 @@ test("áudio e foto usam a IA, com limite diário", async () => {
   gemini = { transcricao: "", itens: [{ tipo: "gasto", valor: 89.9, data: "2026-10-20", descricao: "Farmácia Pague", categoria: "saude" }] };
   await zap({ type: "image", image: { id: "i1" } });
   assert.deepEqual(linhas("SELECT v,c FROM expenses ORDER BY upd").map((r) => [r.v, r.c]), [[40, "mercado"], [89.9, "saude"]]);
+  gemini = { transcricao: "", itens: [{ tipo: "gasto", valor: 120, data: "2026-10-21", descricao: "Maria Silva", categoria: "outros", meio: "Pix" }, { tipo: "receita", valor: 300, data: "2026-10-22", descricao: "João", categoria: "outras_receitas", meio: "Pix" }] };
+  await zap({ type: "image", image: { id: "i2" } });   // comprovante/tela do banco: várias transações, meio Pix
+  assert.deepEqual(linhas("SELECT x FROM expenses WHERE v IN (120,300) ORDER BY v").map((r) => JSON.parse(r.x).m), ["Pix", "Pix"]);
   gemini = { itens: [{ tipo: "gasto", valor: 1e12, descricao: "absurdo", categoria: "x" }] };
   await zap({ type: "audio", audio: { id: "a2" } }); assert.match(ultima(), /não achei valores/);
   await zap({ type: "audio", audio: { id: "a3" } }); assert.match(ultima(), /limite/);

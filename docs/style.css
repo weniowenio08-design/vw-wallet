@@ -297,3 +297,5 @@ body.modo-gastos{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
 .gpr{margin-top:10px;font-size:14px;line-height:1.5}.gpr:empty{display:none}.gpr{border-radius:12px;padding:12px;background:var(--chip)}
 .gpr.sim{background:color-mix(in srgb,var(--up) 16%,transparent)}.gpr.cuidado{background:color-mix(in srgb,var(--gold) 28%,transparent)}.gpr.nao{background:color-mix(in srgb,var(--down) 16%,transparent)}
 .gpr div{font-size:13px;color:var(--mut);margin-top:4px}
+
+.gl input[type=checkbox]{width:auto;height:auto;margin:0 8px 0 0;flex:none}
