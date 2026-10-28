@@ -146,6 +146,9 @@ export async function onMessage(env, m) {
   await tratar(env, user, from, msg);
 }
 
+/** O Telegram manda a foto em vários tamanhos: o menor com 1000 px já lê qualquer nota e baixa e sobe bem mais rápido. */
+const fotoMedia = (fotos) => (fotos.find((f) => Math.max(f.width || 0, f.height || 0) >= 1000) || fotos[fotos.length - 1]).file_id;
+
 /** Telegram (só conversas privadas). "/relatorio setembro" vira "relatorio setembro". */
 export async function onTelegram(env, upd) {
   const m = upd.message; if (!m || m.chat?.type !== "private" || !m.from) return;
@@ -161,7 +164,7 @@ export async function onTelegram(env, upd) {
     return;
   }
   const doc = m.document && /^(application\/pdf|image\/)/.test(m.document.mime_type || "");
-  const msg = m.voice || m.audio ? { type: "audio", id: (m.voice || m.audio).file_id } : m.photo?.length ? { type: "image", id: m.photo[m.photo.length - 1].file_id }
+  const msg = m.voice || m.audio ? { type: "audio", id: (m.voice || m.audio).file_id } : m.photo?.length ? { type: "image", id: fotoMedia(m.photo) }
     : doc ? { type: "image", id: m.document.file_id } : text ? { type: "text", text } : { type: "outro" };
   await tratar(env, user, to, msg);
 }
@@ -220,8 +223,8 @@ async function midia(env, user, from, id, kind) {
   if (!id) return;
   if (!iaLigada(env)) return sendText(env, from, "Para entender áudio e foto eu preciso da IA, que ainda não está ligada. Por enquanto, escreva: *gastei 45 no mercado*.");
   if (!(await usaIa(env, user))) return sendText(env, from, "Cheguei ao limite de áudios e fotos de hoje. Escreva em texto ou tente amanhã.");
-  await sendText(env, from, kind === "audio" ? "🎙️ Ouvindo…" : "🔎 Lendo a nota…").catch(() => {});
-  const { bytes, mime } = await downloadMedia(env, from, id);
+  const ack = sendText(env, from, kind === "audio" ? "🎙️ Ouvindo…" : "🔎 Lendo a nota…").catch(() => {});   // sai em paralelo com o download
+  const { bytes, mime } = await downloadMedia(env, from, id); await ack;
   const r = await extrairMidia(env, { kind: kind === "audio" ? "audio" : "image", mime: mime || (kind === "audio" ? "audio/ogg" : "image/jpeg"), bytes, hoje: hojeBRT() });
   if (!r.itens.length) return sendText(env, from, kind === "audio" ? "Ouvi o áudio, mas não achei valores. Tente dizer, por exemplo: \"gastei quarenta e cinco reais no mercado\"." : "Não consegui ler um valor nessa foto. Tente uma foto mais de perto, com o total visível, ou escreva o gasto.");
   await salvarItens(env, user.id, r.itens);

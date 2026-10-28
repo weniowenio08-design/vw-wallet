@@ -4,7 +4,7 @@ import { CATS, CATS_REC, cleanItem, newId } from "../../docs/gastos-core.js";
 import { toB64 } from "./util.js";
 
 const KEYS_G = CATS.map((c) => c.k).join(", "), KEYS_R = CATS_REC.map((c) => c.k).join(", ");
-const SCHEMA = `{"transcricao": "texto falado ou impresso, resumido", "itens": [{"tipo": "gasto" ou "receita", "valor": número em reais (ponto decimal), "data": "AAAA-MM-DD" ou null, "descricao": "curta, em português", "categoria": uma chave de [gasto: ${KEYS_G}] [receita: ${KEYS_R}]}]}`;
+const SCHEMA = `{"transcricao": "no máximo 15 palavras", "itens": [{"tipo": "gasto" ou "receita", "valor": número em reais (ponto decimal), "data": "AAAA-MM-DD" ou null, "descricao": "curta, em português", "categoria": uma chave de [gasto: ${KEYS_G}] [receita: ${KEYS_R}]}]}`;
 
 const PROMPTS = {
   audio: (hoje) => `Você ajuda a anotar finanças pessoais de um brasileiro. Ouça o áudio, em português, e extraia cada gasto ou receita que a pessoa citou. Hoje é ${hoje} (fuso de Brasília): "ontem", "sexta" etc. viram datas reais; sem data, use null. Se não houver valor em reais, devolva itens vazio. Responda SOMENTE JSON neste formato: ${SCHEMA}`,
@@ -30,13 +30,13 @@ async function candidatos(env) {
 async function gemini(env, parts) {
   let fila = [modeloBom || env.GEMINI_MODEL || "gemini-2.5-flash"], expandiu = false; const erros = []; let r; const t0 = Date.now();
   for (let i = 0; i < fila.length && i < 6; i++) {
-    const model = fila[i], restante = 26000 - (Date.now() - t0); if (restante < 3000) { erros.push("tempo esgotado"); break; }
-    const geracao = { responseMimeType: "application/json", temperature: 0 };
+    const model = fila[i], restante = 20000 - (Date.now() - t0); if (restante < 2500) { erros.push("tempo esgotado"); break; }
+    const geracao = { responseMimeType: "application/json", temperature: 0, maxOutputTokens: 700 };
     if (/gemini-2\.5-flash$/.test(model)) geracao.thinkingConfig = { thinkingBudget: 0 };   // sem "pensar": bem mais rápido para ler áudio e nota
     const ini = Date.now();
     try {
       r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY }, signal: AbortSignal.timeout(Math.min(12000, restante)),
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY }, signal: AbortSignal.timeout(Math.min(9000, restante)),
         body: JSON.stringify({ contents: [{ parts }], generationConfig: geracao }),
       });
     } catch (e) { console.log(`IA ${model}: sem resposta em ${Date.now() - ini} ms`); erros.push(`${model}: demorou demais`); r = { ok: false, status: 408 }; continue; }
