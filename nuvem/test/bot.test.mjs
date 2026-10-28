@@ -119,6 +119,19 @@ test("anota por texto, resume, corrige categoria e desfaz", async () => {
   await zap(txt("blá blá")); assert.match(ultima(), /Não achei um valor/);
 });
 
+test("apagar todos os gastos pede confirmação; só 'confirmo' apaga; outra mensagem cancela", async () => {
+  await vincula();
+  await zap(txt("gastei 10 no mercado")); await zap(txt("uber 20"));
+  await zap(txt("apagar todos os gastos")); assert.match(ultima(), /todos os 2 lançamentos[\s\S]*confirmo/);
+  assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE deleted=0")[0].n, 2);
+  await zap(txt("oi")); // cancela
+  await zap(txt("confirmo")); assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE deleted=0")[0].n, 2);
+  await zap(txt("desfazer todos os gastos")); await zap(txt("confirmo")); assert.match(ultima(), /apaguei 2 lançamento/);
+  assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE deleted=0")[0].n, 0);
+  assert.equal(linhas("SELECT COUNT(*) n FROM expenses WHERE deleted=1")[0].n, 2); // some do app pela sincronização
+  await zap(txt("apagar tudo")); assert.match(ultima(), /nenhum lançamento/);
+});
+
 test("repetição do mesmo id é ignorada", async () => {
   await vincula();
   const raw = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ id: "dup1", from: WA, ...txt("gastei 9 no cafe") }] } }] }] });

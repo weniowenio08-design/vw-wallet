@@ -28,7 +28,7 @@ const AJUDA = `Olá! Eu anoto seus gastos. 🦅
 *Comandos*
 • *relatório* (PDF do mês) · *relatório setembro*
 • *planilha* (abre no Excel)
-• *resumo* · *últimos* · *desfazer*
+• *resumo* · *últimos* · *desfazer* · *apagar todos os gastos* (pede confirmação)
 • *categoria transporte* (corrige o último)
 • *relatório automático dia 30* · *parar relatório*`;
 
@@ -179,6 +179,22 @@ async function confirmar(env, user, from, itens) {
 
 async function texto(env, user, from, text) {
   const hoje = hojeBRT(), n = norm(text);
+  // Apagar TUDO: pede confirmação (vale 5 min); qualquer outra mensagem cancela o pedido.
+  const chaveTudo = "apagartudo:" + user.id;
+  const pedido = await env.DB.prepare("SELECT t FROM seen WHERE id=?").bind(chaveTudo).first();
+  if (pedido) await env.DB.prepare("DELETE FROM seen WHERE id=?").bind(chaveTudo).run();
+  if (pedido && Date.now() - pedido.t < 5 * 60e3 && /^(confirmo|sim|sim confirmo|confirmar|apagar tudo|pode apagar)$/.test(n)) {
+    const r = await env.DB.prepare("UPDATE expenses SET deleted=1, upd=? WHERE user=? AND deleted=0").bind(Date.now(), user.id).run();
+    return sendText(env, from, `🗑️ Pronto: apaguei ${r.meta?.changes ?? 0} lançamento(s), no chat e no app. O app limpa na próxima sincronização.`);
+  }
+  if (/^(desfazer|apagar|limpar|zerar|excluir|deletar) (todos |tudo|todas )?(os |as )?(gastos|lancamentos|tudo|registros)?$/.test(n) && /(tudo|todos|todas|gastos|lancamentos|registros)/.test(n)) {
+    const q = (await env.DB.prepare("SELECT COUNT(*) AS q FROM expenses WHERE user=? AND deleted=0").bind(user.id).first()).q;
+    if (!q) return sendText(env, from, "Não há nenhum lançamento para apagar.");
+    await env.DB.prepare("INSERT OR REPLACE INTO seen(id,t) VALUES(?,?)").bind(chaveTudo, Date.now()).run();
+    return sendText(env, from, `⚠️ Isto apaga *todos os ${q} lançamentos*, no chat e no app. Não tem volta.
+Para continuar, responda *confirmo* (vale 5 minutos). Qualquer outra mensagem cancela.`);
+  }
+  if (pedido) await sendText(env, from, "Pedido de apagar tudo cancelado.");
   if (/^(ajuda|help|menu|comandos|start|oi|ola|bom dia|boa tarde|boa noite|\?)$/.test(n)) return sendText(env, from, AJUDA);
   if (/^(desfazer|desfaz|apagar ultimo|apagar o ultimo|cancelar ultimo|errei)$/.test(n)) {
     const u = await ultimo(env, user.id); if (!u) return sendText(env, from, "Não há nada para desfazer.");
