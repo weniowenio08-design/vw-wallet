@@ -44,6 +44,8 @@ function instalaFetch() {
     if (url.includes("api.telegram.org") && url.endsWith("/sendMessage")) { const b = JSON.parse(init.body); const mid = ++midSeq; saidas.push({ type: "text", tg: true, to: b.chat_id, text: { body: b.text }, mid }); return new Response(JSON.stringify({ ok: true, result: { message_id: mid } }), { status: 200 }); }
     if (url.includes("api.telegram.org") && url.endsWith("/sendDocument")) { const f = init.body.get("document"); saidas.push({ upload: f.name, tg: true, to: init.body.get("chat_id"), bytes: new Uint8Array(await f.arrayBuffer()) }); return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 }); }
     if (url.includes("api.telegram.org") && url.endsWith("/getFile")) return new Response(JSON.stringify({ ok: true, result: { file_path: "voice/file_1.oga", file_size: 10 } }), { status: 200 });
+    if (url === "https://app.test/vw-wallet/icons/bot-foto.jpg") return new Response(new Uint8Array([0xff, 0xd8, 0xff]));
+    if (url.includes("api.telegram.org") && url.endsWith("/setMyProfilePhoto")) { const f = init.body.get("foto"); saidas.push({ fotoBot: f.name, tipo: f.type, photo: init.body.get("photo") }); return new Response(JSON.stringify({ ok: true, result: true }), { status: 200 }); }
     throw new Error("fetch inesperado: " + url);
   };
 }
@@ -387,4 +389,31 @@ test("IA: se o modelo estoura a cota (429), tenta os estáveis em ordem e ignora
   gemini = { transcricao: "", itens: [{ tipo: "gasto", valor: 33, data: null, descricao: "Padaria", categoria: "mercado" }] };
   await zap({ type: "image", image: { id: "i1" } });
   assert.deepEqual(linhas("SELECT v FROM expenses").map((r) => r.v), [33]);
+});
+
+test("convites individuais: só o dono gera; uso único; revogar; vencer; limite", async () => {
+  const novo = await api("/api/admin/invite", { nome: "Colega" }); assert.equal(novo.status, 200); assert.match(novo.body.code, /^[A-Za-z0-9_-]{24}$/);
+  assert.equal((await api("/api/admin/invite", { nome: "x" }, TOKEN, { "X-Invite": novo.body.code })).status, 403, "código individual não administra");
+  assert.equal((await api("/api/admin/invites", undefined, TOKEN, { "X-Invite": "errado" })).status, 403);
+  const T2 = "b".repeat(64), T3 = "c".repeat(64);
+  assert.equal((await api("/api/sync", { since: 0, items: [] }, T2, { "X-Invite": novo.body.code })).status, 200, "o código individual cria a conta");
+  assert.equal((await api("/api/sync", { since: 0, items: [] }, T3, { "X-Invite": novo.body.code })).status, 403, "uso único");
+  assert.equal((await api("/api/status", undefined, T2, { "X-Invite": "" })).status, 200, "quem já tem conta não precisa mais do código");
+  const l = (await api("/api/admin/invites")).body; assert.equal(l.convites.length, 1); assert.equal(l.convites[0].usado, true); assert.equal(l.convites[0].nome, "Colega"); assert.equal(l.usuarios, 1);
+  assert.ok(!JSON.stringify(l).includes(novo.body.code), "a lista nunca mostra o código");
+  const b = (await api("/api/admin/invite", { nome: "B" })).body; assert.equal((await api("/api/admin/revoke", { id: b.id })).body.revogados, 1);
+  assert.equal((await api("/api/sync", { since: 0, items: [] }, T3, { "X-Invite": b.code })).status, 403, "revogado");
+  assert.equal((await api("/api/admin/revoke", { id: novo.body.id })).body.revogados, 0, "convite já usado não se revoga");
+  const c = (await api("/api/admin/invite", { nome: "C" })).body; env.DB.raw.prepare("UPDATE invites SET exp=1 WHERE code_hash LIKE ?").run(c.id + "%");
+  assert.equal((await api("/api/sync", { since: 0, items: [] }, T3, { "X-Invite": c.code })).status, 403, "vencido");
+  const d = (await api("/api/admin/invite", { nome: "D" })).body;
+  assert.equal((await api("/api/sync", { since: 0, items: [] })).status, 200); // dono entra com o código mestre (2 de 2 vagas)
+  assert.equal((await api("/api/sync", { since: 0, items: [] }, T3, { "X-Invite": d.code })).status, 403, "limite de usuários");
+  assert.equal((await api("/api/admin/invites")).body.convites.find((x) => x.id === d.id).usado, false, "limite não gasta o código");
+});
+
+test("foto do bot: só o dono manda; vai como JPG para o Telegram", async () => {
+  assert.equal((await api("/api/admin/tg-foto", {}, TOKEN, { "X-Invite": "errado" })).status, 403);
+  assert.equal((await api("/api/admin/tg-foto", {})).status, 200);
+  const f = saidas.find((s) => s.fotoBot); assert.equal(f.tipo, "image/jpeg"); assert.match(f.photo, /attach:\/\/foto/);
 });

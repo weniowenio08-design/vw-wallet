@@ -868,6 +868,7 @@ function shareCard() {
   <div style="font-weight:800;margin-top:14px">Código de convite</div>
   <div class="mut" style="font-size:13px;line-height:1.5;margin-top:4px" id="conv-st">${store.get("convite", "") ? "Convite guardado neste aparelho. ✓" : "Para conectar o Telegram, digite o código que quem te convidou passou (ou cole o link inteiro)."}</div>
   <input id="conv-in" placeholder="Código ou link de convite" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" style="margin-top:8px"><button class="btn ghost" id="conv-save">Guardar código</button>
+  <div id="conv-dono"></div>
   <img class="qr" src="icons/qr.png" alt="QR code do app" width="168" height="168"><div class="mut" style="font-size:12px;text-align:center">Ou a pessoa aponta a câmera do celular para este código.</div>
   <label>Tamanho das letras</label><div class="seg" id="zoom-seg">${[["1", "Normal"], ["1.15", "Grande"], ["1.3", "Muito grande"]].map(([v, t]) => `<button data-zoom="${v}" class="${String(store.get("zoom", 1)) === v ? "on" : ""}">${t}</button>`).join("")}</div></div>`;
 }
@@ -877,9 +878,36 @@ function ntfLinks() {
 }
 function bindShare() {
   bindInstall(); ntfLinks();
+  // ---- convites individuais: só o aparelho do dono (o que guarda o código mestre) vê e usa este painel
+  let donoOn = false, novoCode = "";
+  const dataBR = (ms) => new Date(ms).toLocaleDateString("pt-BR");
+  const textoConvite = (code) => `Convite para o Uiraçu (vale uma vez, por 7 dias).\n\n1) Abra o app: ${APP_URL()}\n2) Toque em Mais > Código de convite e digite:\n${code}\n\nSe preferir, este link já guarda o código: ${APP_URL()}?c=${code}`;
+  const enviaTexto = async (t) => { try { if (navigator.share) await navigator.share({ title: "Uiraçu", text: t }); else { await navigator.clipboard.writeText(t); toast("Texto copiado."); } } catch {} };
+  async function gerarEEnviar(nome) {
+    if (nome === null) return;
+    try { const r = await G.nuvem.adminConvite(nome); novoCode = r.code; await carregaDono(); await enviaTexto(textoConvite(r.code)); }
+    catch (e) { toast("Não consegui gerar o código: " + ((e && e.message) || "erro")); }
+  }
+  async function carregaDono() {
+    const box = $("#conv-dono"); if (!box || !store.get("convite", "")) return;
+    try {
+      const r = await G.nuvem.adminLista(); donoOn = true; const agora = r.now || Date.now();
+      const stt = (c) => c.revogado ? "Cancelado" : c.usado ? "Usado" : c.exp < agora ? "Vencido" : "Aguardando, vence " + dataBR(c.exp);
+      box.innerHTML = `<div style="font-weight:800;margin-top:16px">Convites (só neste celular)</div>
+        <div class="mut" style="font-size:13px;line-height:1.5;margin-top:4px">Contas criadas: ${r.usuarios} de ${r.max}. Cada código vale uma vez e vence em 7 dias. O botão "Enviar o link" acima também gera um código novo.</div>
+        <input id="dono-nome" placeholder="Nome de quem vai receber (opcional)" autocomplete="off" style="margin-top:8px"><button class="btn" id="dono-gerar">Gerar código de convite</button>
+        ${novoCode ? `<div class="stat" style="margin:12px 0"><small>Código novo (mande à pessoa; some desta tela quando você sair)</small><b class="num" style="font-size:22px;letter-spacing:.06em;word-break:break-all">${esc(novoCode)}</b></div><button class="btn ghost" id="dono-enviar">Enviar o convite (WhatsApp…)</button>` : ""}
+        ${r.convites.map((c) => `<div class="row" style="cursor:default"><div style="flex:1"><b>${esc(c.nome || "Sem nome")}</b><div class="mut" style="font-size:12.5px">${stt(c)}</div></div>${!c.usado && !c.revogado && c.exp >= agora ? `<button class="btn ghost sm" data-rev="${esc(c.id)}">Cancelar</button>` : ""}</div>`).join("")}`;
+      $("#dono-gerar")?.addEventListener("click", () => gerarEEnviar(($("#dono-nome")?.value || "").trim()));
+      $("#dono-enviar")?.addEventListener("click", () => enviaTexto(textoConvite(novoCode)));
+      box.querySelectorAll("[data-rev]").forEach((b) => b.addEventListener("click", async () => { try { await G.nuvem.adminRevogar(b.dataset.rev); toast("Convite cancelado."); carregaDono(); } catch (e) { toast("Não consegui cancelar: " + ((e && e.message) || "erro")); } }));
+    } catch { donoOn = false; box.innerHTML = ""; }
+  }
+  carregaDono();
   $("#ntfy")?.addEventListener("change", ntfLinks);
   $("#sh-app")?.addEventListener("click", async () => {
-    const conv = store.get("convite", ""), url = APP_URL() + (conv ? "?c=" + conv : ""), text = "Conheça o Uiraçu: acompanha o mercado e mostra a hora de comprar e de vender, de acordo com o seu perfil. Gratuito, sem cadastro; seus dados ficam só no seu celular.";
+    if (donoOn) { await gerarEEnviar(window.prompt("Para quem é o convite? (opcional)", "")); return; }
+    const url = APP_URL(), text = "Conheça o Uiraçu: acompanha o mercado e mostra a hora de comprar e de vender, de acordo com o seu perfil. Gratuito, sem cadastro; seus dados ficam só no seu celular.";
     try { if (navigator.share) await navigator.share({ title: "Uiraçu", text, url }); else { await navigator.clipboard.writeText(text + "\n" + url); toast("Texto e link copiados."); } } catch {}
   });
   $("#conv-save")?.addEventListener("click", () => {

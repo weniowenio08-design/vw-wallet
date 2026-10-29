@@ -35,6 +35,10 @@ export function makeNuvem({ store, toast }) {
   const registrar = () => api("/api/register", {});
   const ajustes = (o) => api("/api/settings", o);
   const enviarRelatorio = (ym) => api("/api/report/send", { ym });
+  // convites individuais: só funcionam no aparelho do dono (que guarda o código mestre); em qualquer outro o servidor responde 403
+  const adminLista = () => api("/api/admin/invites");
+  const adminConvite = (nome) => api("/api/admin/invite", { nome: String(nome || "") });
+  const adminRevogar = (id) => api("/api/admin/revoke", { id });
 
   // ----------------------------------------------------------- avisos push (sem instalar outro app)
   const b64u = (s) => { const p = "=".repeat((4 - (s.length % 4)) % 4), b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
@@ -52,5 +56,5 @@ export function makeNuvem({ store, toast }) {
   const testePush = () => api("/api/push/test", {});
   const pushOn = () => store.get("push_on", false) && "Notification" in window && Notification.permission === "granted";
 
-  return { ativa, config, sync, markPend, status, registrar, ajustes, enviarRelatorio, ligarPush, testePush, pushOn, token };
+  return { ativa, config, sync, markPend, status, registrar, ajustes, enviarRelatorio, adminLista, adminConvite, adminRevogar, ligarPush, testePush, pushOn, token };
 }

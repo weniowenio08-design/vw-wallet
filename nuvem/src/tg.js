@@ -16,7 +16,15 @@ export const toHtml = (t) => esc(t).replace(/\*([^*\n]+)\*/g, "<b>$1</b>").repla
 export const MENU = [["comandos", "Todos os comandos"], ["resumo", "Resumo do mês"], ["ultimos", "Últimos lançamentos"], ["saldo", "Quanto sobra em cada conta"], ["relatorio", "Relatório em PDF"], ["planilha", "Planilha do mês"], ["modoempresa", "Anotar na conta da empresa"], ["modopessoal", "Anotar na conta pessoal"], ["desfazer", "Apagar o último lançamento"], ["apagartudo", "Apagar todos (pede confirmação)"], ["lembretes", "Meus lembretes"], ["backup", "Planilha completa agora"], ["familia", "Quem está na família"], ["pararrelatorio", "Parar o relatório automático"], ["ajuda", "Como usar"]];
 export const setCommands = (env) => call(env, "setMyCommands", { commands: MENU.map(([command, description]) => ({ command, description })) });
 
-export const sendText = (env, chat, body) => call(env, "sendMessage", { chat_id: /^-?\d+$/.test(String(chat)) ? Number(chat) : chat, text: toHtml(String(body)).slice(0, 4000), parse_mode: "HTML", disable_web_page_preview: true });
+/** Foto do bot (JPG). A API exige o arquivo novo em multipart, referenciado por attach://. */
+export function setProfilePhoto(env, bytes) {
+  const fd = new FormData();
+  fd.append("photo", JSON.stringify({ type: "static", photo: "attach://foto" }));
+  fd.append("foto", new Blob([bytes], { type: "image/jpeg" }), "foto.jpg");
+  return call(env, "setMyProfilePhoto", fd, true);
+}
+
+export const sendText =(env, chat, body) => call(env, "sendMessage", { chat_id: /^-?\d+$/.test(String(chat)) ? Number(chat) : chat, text: toHtml(String(body)).slice(0, 4000), parse_mode: "HTML", disable_web_page_preview: true });
 
 export async function sendDocument(env, chat, bytes, filename, mime, caption = "") {
   const fd = new FormData();

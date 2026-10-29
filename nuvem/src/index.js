@@ -4,6 +4,7 @@ import { verifySignature, sendTemplate } from "./wa.js";
 import { onMessage, onTelegram, agendados, pushUser, enviarRelatorio, upsertStmt, hidrata } from "./bot.js";
 import { subValida } from "./push.js";
 import { iaLigada } from "./ai.js";
+import { setProfilePhoto } from "./tg.js";
 import { cleanItem } from "../../docs/gastos-core.js";
 
 const dec = new TextDecoder();
@@ -19,10 +20,21 @@ async function auth(req, env, create) {
   const h = await sha256hex(t);
   let u = await env.DB.prepare("SELECT * FROM users WHERE token_hash=?").bind(h).first();
   if (!u && create) {
-    if (env.INVITE_CODE && !safeEq(req.headers.get("X-Invite") || "", env.INVITE_CODE)) throw new HttpError(403, "convite necessário");
+    // convite: o código mestre (do dono) ou um código individual, de uso único, que o dono gerou no app dele
+    const inv = req.headers.get("X-Invite") || "", mestre = !env.INVITE_CODE || safeEq(inv, env.INVITE_CODE);
+    let invHash = null;
+    if (!mestre) {
+      invHash = inv ? await sha256hex(inv) : "";
+      const ok = invHash && await env.DB.prepare("SELECT 1 AS x FROM invites WHERE code_hash=? AND used_by IS NULL AND revoked=0 AND exp>?").bind(invHash, Date.now()).first();
+      if (!ok) throw new HttpError(403, "convite necessário (inválido, usado ou vencido)");
+    }
     const n = (await env.DB.prepare("SELECT COUNT(*) AS n FROM users").first()).n;
     if (n >= +(env.MAX_USERS || 5)) throw new HttpError(403, "limite de usuários");
     const id = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
+    if (invHash) { // gasta o código antes de criar a conta; se outra pessoa gastou primeiro, nada muda
+      const r = await env.DB.prepare("UPDATE invites SET used_by=?, used_at=? WHERE code_hash=? AND used_by IS NULL AND revoked=0 AND exp>?").bind(id, Date.now(), invHash, Date.now()).run();
+      if (!r.meta || !r.meta.changes) throw new HttpError(403, "convite necessário (inválido, usado ou vencido)");
+    }
     await env.DB.prepare("INSERT INTO users(id,token_hash,created) VALUES(?,?,?)").bind(id, h, Date.now()).run();
     u = await env.DB.prepare("SELECT * FROM users WHERE id=?").bind(id).first();
   }
@@ -63,6 +75,33 @@ async function api(req, env, ctx, url) {
     const { results } = await env.DB.prepare("SELECT * FROM users WHERE push != '[]'").all();
     let n = 0; for (const u of results) n += await pushUser(env, u, payload);
     return json({ ok: true, enviados: n });
+  }
+  if (p.startsWith("/api/admin/")) { // só o dono (o aparelho que tem o código mestre) gera e gerencia convites
+    if (!env.INVITE_CODE || !safeEq(req.headers.get("X-Invite") || "", env.INVITE_CODE)) throw new HttpError(403, "só o dono");
+    if (p === "/api/admin/invites" && req.method === "GET") {
+      const { results } = await env.DB.prepare("SELECT substr(code_hash,1,8) AS id, nome, created, exp, used_by, used_at, revoked FROM invites ORDER BY created DESC LIMIT 50").all();
+      const n = (await env.DB.prepare("SELECT COUNT(*) AS n FROM users").first()).n;
+      return json({ convites: results.map((r) => ({ id: r.id, nome: r.nome, created: r.created, exp: r.exp, usado: !!r.used_by, usado_em: r.used_at, revogado: !!r.revoked })), usuarios: n, max: +(env.MAX_USERS || 5), now: Date.now() });
+    }
+    if (p === "/api/admin/invite" && req.method === "POST") {
+      const b = await readJson(req), nome = String(b.nome || "").replace(/[<>]/g, "").trim().slice(0, 40);
+      const code = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(18)))).replace(/\+/g, "-").replace(/\//g, "_"); // 24 caracteres
+      const hash = await sha256hex(code), now = Date.now(), exp = now + 7 * 86400e3;
+      await env.DB.prepare("INSERT INTO invites(code_hash,nome,created,exp) VALUES(?,?,?,?)").bind(hash, nome, now, exp).run();
+      return json({ ok: true, code, id: hash.slice(0, 8), exp });
+    }
+    if (p === "/api/admin/revoke" && req.method === "POST") {
+      const b = await readJson(req); if (!/^[a-f0-9]{8}$/.test(String(b.id || ""))) throw new HttpError(400, "id inválido");
+      const r = await env.DB.prepare("UPDATE invites SET revoked=1 WHERE substr(code_hash,1,8)=? AND used_by IS NULL").bind(b.id).run();
+      return json({ ok: true, revogados: r.meta ? r.meta.changes : 0 });
+    }
+    if (p === "/api/admin/tg-foto" && req.method === "POST") { // põe a logo do app como foto do bot (o Telegram exige JPG)
+      if (!env.TG_BOT_TOKEN) throw new HttpError(409, "Telegram não está ligado");
+      const r = await fetch(`${env.APP_ORIGIN}/vw-wallet/icons/bot-foto.jpg`); if (!r.ok) throw new HttpError(502, "não achei a imagem do app");
+      await setProfilePhoto(env, await r.arrayBuffer());
+      return json({ ok: true });
+    }
+    throw new HttpError(404, "rota desconhecida");
   }
   const criar = ["/api/sync", "/api/register", "/api/settings", "/api/push/subscribe"].includes(p);
   const user = await auth(req, env, criar);
