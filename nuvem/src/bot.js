@@ -181,8 +181,16 @@ async function vincular(env, code, canal, id, to) {
   const st = canal === "tg"
     ? [env.DB.prepare("UPDATE users SET tg=NULL, tg_chat=NULL WHERE tg=?").bind(id), env.DB.prepare("UPDATE users SET tg=?, tg_chat=?, last_inbound=? WHERE id=?").bind(id, idOf(to), Date.now(), l.user)]
     : [env.DB.prepare("UPDATE users SET wa=NULL, wa_raw=NULL WHERE wa=?").bind(id), env.DB.prepare("UPDATE users SET wa=?, wa_raw=?, last_inbound=? WHERE id=?").bind(id, to, Date.now(), l.user)];
-  await env.DB.batch([...st, env.DB.prepare("DELETE FROM links WHERE code=?").bind(code)]);
-  await sendText(env, to, "✅ Conectado ao Uiraçu!\n\n" + AJUDA);
+  // A mesma pessoa pode ter duas contas (ex.: Safari e app da Tela de Início no iPhone, ou app reinstalado). Se este chat já estava
+  // ligado a outra conta, o histórico vem junto: senão o app novo aparece vazio e os gastos ficam presos na conta antiga.
+  const antigo = await env.DB.prepare(canal === "tg" ? "SELECT id FROM users WHERE tg=?" : "SELECT id FROM users WHERE wa=?").bind(id).first();
+  let trouxe = 0, mover = [];
+  if (antigo && antigo.id !== l.user) {
+    trouxe = (await env.DB.prepare("SELECT COUNT(*) AS n FROM expenses WHERE user=? AND deleted=0").bind(antigo.id).first()).n;
+    mover = [env.DB.prepare("UPDATE OR IGNORE expenses SET user=?, upd=? WHERE user=?").bind(l.user, Date.now(), antigo.id), env.DB.prepare("UPDATE OR IGNORE lembretes SET user=? WHERE user=?").bind(l.user, antigo.id)];
+  }
+  await env.DB.batch([...mover, ...st, env.DB.prepare("DELETE FROM links WHERE code=?").bind(code)]);
+  await sendText(env, to, "✅ Conectado ao Uiraçu!" + (trouxe ? `\n\n📥 Trouxe ${trouxe} lançamento${trouxe > 1 ? "s" : ""} da sua conta anterior; eles já aparecem no app.` : "") + "\n\n" + AJUDA);
 }
 
 /** Mensagem já normalizada: { type: "text" | "audio" | "image" | "outro", text?, id? } */
@@ -207,9 +215,9 @@ export async function onMessage(env, m) {
   if (!ins.meta.changes) return; // o WhatsApp reenvia: já tratei esta
   const text = m.type === "text" ? String(m.text?.body || "").trim() : "";
   const user = await env.DB.prepare("SELECT * FROM users WHERE wa=?").bind(wa).first();
+  const mm = /^vincular\s+(\d{6})$/i.exec(text.replace(/\s+/g, " "));
+  if (mm) return vincular(env, mm[1], "wa", wa, from); // vale também para quem já está ligado a outra conta
   if (!user) {
-    const mm = /^vincular\s+(\d{6})$/i.exec(text.replace(/\s+/g, " "));
-    if (mm) return vincular(env, mm[1], "wa", wa, from);
     if (permitidos(env).includes(wa)) await sendText(env, from, "Este número ainda não está conectado. No app Uiraçu, aba *Gastos*, toque em *Conectar ao WhatsApp* e envie o código aqui.");
     return;
   }
@@ -231,9 +239,10 @@ export async function onTelegram(env, upd) {
   let text = String(m.text ?? m.caption ?? "").trim().replace(/^\/(\w+)(@\w+)?/, "$1").trim();
   text = SLASH[text.toLowerCase()] ?? text;
   const user = await env.DB.prepare("SELECT * FROM users WHERE tg=?").bind(id).first();
+  // código de vínculo vale também para quem já está ligado a outra conta (ex.: reinstalou o app): senão vira "gasto" de R$ 123.456
+  const mm = /^(?:start|vincular)\s+(\d{6})$/i.exec(text.replace(/\s+/g, " "));
+  if (mm) return vincular(env, mm[1], "tg", id, to);
   if (!user) {
-    const mm = /^(?:start|vincular)\s+(\d{6})$/i.exec(text.replace(/\s+/g, " "));
-    if (mm) return vincular(env, mm[1], "tg", id, to);
     await sendText(env, to, "Olá! Ainda não conheço você. No app Uiraçu, aba *Gastos*, toque em *Conectar ao Telegram* e envie o código aqui.");
     return;
   }

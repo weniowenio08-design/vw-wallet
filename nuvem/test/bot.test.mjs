@@ -417,3 +417,18 @@ test("foto do bot: só o dono manda; vai como JPG para o Telegram", async () => 
   assert.equal((await api("/api/admin/tg-foto", {})).status, 200);
   const f = saidas.find((s) => s.fotoBot); assert.equal(f.tipo, "image/jpeg"); assert.match(f.photo, /attach:\/\/foto/);
 });
+
+test("Telegram: ao ligar o mesmo chat a uma segunda conta, o histórico vem junto", async () => {
+  await vinculaTg(); // conta A liga o Telegram 777
+  await tgz({ text: "gastei 45,90 no mercado" });
+  assert.equal(linhas("SELECT COUNT(*) AS n FROM expenses")[0].n, 1);
+  const B = "d".repeat(64);
+  assert.equal((await api("/api/sync", { since: 0, items: [] }, B)).body.items.length, 0, "a conta nova nasce vazia");
+  const r = await api("/api/register", {}, B); await tgz({ text: "/start " + r.body.code });
+  assert.match(ultima(), /Trouxe 1 lançamento/);
+  assert.equal((await api("/api/sync", { since: 0, items: [] }, B)).body.items.length, 1, "o app novo agora vê o gasto");
+  assert.equal((await api("/api/sync", { since: 0, items: [] })).body.items.length, 0, "a conta antiga fica sem os lançamentos");
+  assert.equal((await api("/api/status", undefined, B)).body.linked, true);
+  assert.equal((await api("/api/status")).body.linked, false);
+  await tgz({ text: "gastei 10 no mercado" }); assert.equal((await api("/api/sync", { since: 0, items: [] }, B)).body.items.length, 2, "os próximos também caem na conta nova");
+});
