@@ -865,6 +865,9 @@ function shareCard() {
   <div style="font-weight:800;margin-top:14px">Mostrar o app a alguém da família</div>
   <div class="mut" style="font-size:13px;line-height:1.5;margin-top:4px">Cada pessoa tem o próprio perfil, e os dados ficam só no celular dela. Os seus dados nunca são enviados. Use com família e amigos, sem cobrar.</div>
   <button class="btn" id="sh-app">${ic("share", "sm")} Enviar o link (WhatsApp…)</button>
+  <div style="font-weight:800;margin-top:14px">Código de convite</div>
+  <div class="mut" style="font-size:13px;line-height:1.5;margin-top:4px" id="conv-st">${store.get("convite", "") ? "Convite guardado neste aparelho. ✓" : "Para conectar o Telegram, digite o código que quem te convidou passou (ou cole o link inteiro)."}</div>
+  <input id="conv-in" placeholder="Código ou link de convite" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" style="margin-top:8px"><button class="btn ghost" id="conv-save">Guardar código</button>
   <img class="qr" src="icons/qr.png" alt="QR code do app" width="168" height="168"><div class="mut" style="font-size:12px;text-align:center">Ou a pessoa aponta a câmera do celular para este código.</div>
   <label>Tamanho das letras</label><div class="seg" id="zoom-seg">${[["1", "Normal"], ["1.15", "Grande"], ["1.3", "Muito grande"]].map(([v, t]) => `<button data-zoom="${v}" class="${String(store.get("zoom", 1)) === v ? "on" : ""}">${t}</button>`).join("")}</div></div>`;
 }
@@ -878,6 +881,12 @@ function bindShare() {
   $("#sh-app")?.addEventListener("click", async () => {
     const conv = store.get("convite", ""), url = APP_URL() + (conv ? "?c=" + conv : ""), text = "Conheça o Uiraçu: acompanha o mercado e mostra a hora de comprar e de vender, de acordo com o seu perfil. Gratuito, sem cadastro; seus dados ficam só no seu celular.";
     try { if (navigator.share) await navigator.share({ title: "Uiraçu", text, url }); else { await navigator.clipboard.writeText(text + "\n" + url); toast("Texto e link copiados."); } } catch {}
+  });
+  $("#conv-save")?.addEventListener("click", () => {
+    let v = ($("#conv-in")?.value || "").trim();
+    try { const c = new URL(v).searchParams.get("c"); if (c) v = c; } catch {}
+    if (!/^[A-Za-z0-9_-]{12,64}$/.test(v)) { toast("Esse código não parece certo. Confira e cole de novo."); return; }
+    store.set("convite", v); $("#conv-in").value = ""; const s = $("#conv-st"); if (s) s.textContent = "Convite guardado neste aparelho. ✓"; toast("Convite guardado.");
   });
   document.querySelectorAll("[data-zoom]").forEach((b) => b.addEventListener("click", () => { store.set("zoom", +b.dataset.zoom); applyZoom(); document.querySelectorAll("[data-zoom]").forEach((x) => x.classList.toggle("on", x === b)); }));
 }

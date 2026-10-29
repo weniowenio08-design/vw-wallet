@@ -85,6 +85,12 @@ export function makeGastos(c) {
     const s = st.status, k = cfg();
     if (st.cloud === false) return `<div class="card" style="font-size:14.5px;line-height:1.55">O assessor de chat (Telegram e WhatsApp) ainda não está ligado neste app. Quando estiver, esta área mostra os botões de conectar, e o que você mandar por texto, áudio ou foto da nota cai aqui.<div class="mut" style="font-size:12.5px;margin-top:8px">Enquanto isso, o app funciona normalmente: anote pela barra de baixo.</div></div>`;
     if (st.cloud === null || !s) return `<div class="card"><span class="mut">Verificando a conexão…</span></div>`;
+    if (s.erro) {
+      const semConvite = s.http === 403 && /convite/i.test(s.msg || ""), cheio = s.http === 403 && /limite/i.test(s.msg || "");
+      if (semConvite) return `<div class="card" style="font-size:14.5px;line-height:1.55"><b>Falta o código de convite.</b> Para criar sua conta e conectar o Telegram, digite abaixo o código que a pessoa que te convidou passou (ou cole o link inteiro).<input id="g-conv-in" placeholder="Código ou link de convite" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" style="margin-top:10px"><button class="btn" id="g-conv-save">Guardar código e tentar de novo</button></div>`;
+      if (cheio) return `<div class="card" style="font-size:14.5px;line-height:1.55"><b>O servidor já atingiu o limite de usuários.</b> Peça a quem te convidou para liberar uma vaga.</div>`;
+      return `<div class="card" style="font-size:14.5px;line-height:1.55"><b>Não consegui falar com o servidor agora.</b> Confira a internet e tente de novo.<div class="mut" style="font-size:12.5px;margin-top:6px">${esc(s.msg || "")}</div><button class="btn" id="g-retry">Tentar de novo</button></div>`;
+    }
     const can = s.canais || {}, tgOn = s.canal === "telegram";
     let h = `<div class="card" style="font-size:14.5px;line-height:1.55">`;
     if (!s.linked || st.code) {
@@ -282,9 +288,17 @@ export function makeGastos(c) {
       st.loading = true;
       N.ativa().then(async (on) => {
         st.cloud = on;
-        if (on) { try { st.status = await N.status(); save(await N.sync(list())); const k = st.status.settings; if (k) store.set("gastos_cfg", { on: !!k.report_on, day: k.report_day, hour: k.report_hour }); adotaSaldos(k?.saldos); } catch { st.status = { linked: false, erro: true }; } }
+        if (on) { try { st.status = await N.status(); save(await N.sync(list())); const k = st.status.settings; if (k) store.set("gastos_cfg", { on: !!k.report_on, day: k.report_day, hour: k.report_hour }); adotaSaldos(k?.saldos); } catch (e) { st.status = { linked: false, erro: true, msg: String((e && e.message) || ""), http: e && e.status }; } }
       }).finally(() => { st.loading = false; if (location.hash === "#/gastos") render(); });
     }
+    const refazer = () => { st.cloud = null; st.status = null; st.loading = false; render(); };
+    $("#g-retry")?.addEventListener("click", refazer);
+    $("#g-conv-save")?.addEventListener("click", () => {
+      let v = ($("#g-conv-in")?.value || "").trim();
+      try { const c = new URL(v).searchParams.get("c"); if (c) v = c; } catch {}
+      if (!/^[A-Za-z0-9_-]{12,64}$/.test(v)) { toast("Esse código não parece certo. Confira e cole de novo."); return; }
+      store.set("convite", v); toast("Convite guardado."); refazer();
+    });
     document.querySelectorAll("[data-gm]").forEach((b) => b.addEventListener("click", () => { st.ym = ymAdd(st.ym, +b.dataset.gm); st.all = false; render(); }));
     document.querySelectorAll("[data-gtp]").forEach((b) => b.addEventListener("click", () => { st.tp = b.dataset.gtp; if (st.editId) { const l = list(), e = l.find((x) => x.id === st.editId); if (e) e.tp = st.tp; } const dv = { v: $("#g-v")?.value, d: $("#g-d")?.value, dt: $("#g-dt")?.value }; render(); const set = (id, v) => { const el = $(id); if (el && v) el.value = v; }; set("#g-v", dv.v); set("#g-d", dv.d); set("#g-dt", dv.dt); $("#g-det").open = true; }));
     const quick = () => { const pc = parseConta($("#gq").value), px = parseExtras(pc.text), p = parseMessage(px.text, hojeBRT()); if (!p.ok) return toast("Não achei o valor. Ex.: gastei 45 no mercado"); addFromParsed(ajustaVencimento(p, px, hojeBRT()), pc.w || (st.conta === "e" ? "e" : "p"), px); render(); };
