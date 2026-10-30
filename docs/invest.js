@@ -126,6 +126,17 @@ export function metaComPrazo({ alvo, prazoYm, hoje, patrimonio = 0, aporteAtual 
   return { meses: n, precisa: r2(pmt), projetado: r2(projetado), noRitmo: projetado >= alvo, folga: r2(projetado - alvo), pct: alvo ? Math.min(1, patrimonio / alvo) : 0 };
 }
 
+// ------------------------------------------------------------ entrada em parcelas (comprar aos poucos)
+/** Divide um valor em n parcelas, uma a cada `passoDias`, a primeira hoje. A soma fecha no centavo (a última leva a sobra). Comprar em partes
+ *  é o conselho que mais se repete entre gestores em dias de pânico: ninguém acerta o fundo, e o tempo entre as compras reduz o arrependimento. */
+export function planoEntrada({ valor, n = 4, hoje, passoDias = 14 }) {
+  const k = Math.max(1, Math.min(12, Math.round(+n) || 1)), tot = r2(Math.max(0, +valor || 0)), base = Math.floor((tot * 100) / k) / 100;
+  const dia = (i) => new Date(Date.parse(hoje + "T12:00:00Z") + i * passoDias * 864e5).toISOString().slice(0, 10);
+  const parcelas = Array.from({ length: k }, (_, i) => ({ n: i + 1, dt: dia(i), v: base }));
+  parcelas[k - 1].v = r2(tot - base * (k - 1));
+  return { total: tot, parcelas };
+}
+
 // ------------------------------------------------------------ exposição ao dólar
 export function exposicaoDolar(pos) {
   const total = pos.reduce((s, p) => s + (p.value ?? 0), 0), dolar = pos.filter((p) => p.sym === "USD").reduce((s, p) => s + p.value, 0), ext = pos.filter((p) => p.cls === "ext" && p.sym !== "USD").reduce((s, p) => s + p.value, 0), direto = dolar + ext;

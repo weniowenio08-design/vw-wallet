@@ -1,6 +1,6 @@
 // Service worker: o app abre mesmo sem internet (mostra o último dado salvo) e se atualiza sozinho.
-const SHELL = "vw-shell-v9";
-const DATA = "vw-data-v9";
+const SHELL = "vw-shell-v10";
+const DATA = "vw-data-v10";
 const FILES = ["./", "index.html", "style.css", "main.js", "extras.js", "dados.js", "gastos.js", "gastos-core.js", "gastos-plus.js", "gastos-agenda.js", "gastos-mais.js", "invest.js", "patrimonio.js", "relatorio.js", "relatorio-carteira.js", "nuvem.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/badge-96.png", "icons/logo.png", "icons/logo-grande.png", "icons/favicon-32.png", "fonts/BricolageGrotesque-Bold.woff"];
 
 self.addEventListener("install", (e) => {

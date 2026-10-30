@@ -1,4 +1,5 @@
 // Extras do Uiraçu: saúde da carteira, teste de estresse, renda estimada, Focus, Tesouro, ferramentas, trilha de aprendizado, PIN e lembrete de aporte.
+import { planoEntrada } from "./invest.js";
 export function makeExtras(c) {
   const { getD, aporteMes, store, esc, fN, fBRL, secTitle, ic, num, toast, CLS, CLS_COLOR, totals, todayBRT } = c;
   const D = () => getD();
@@ -15,6 +16,12 @@ export function makeExtras(c) {
     const d = f.data ? f.data.split("-").reverse().join("/") : "";
     return secTitle("O que o mercado espera (Focus)") + `<div class="card"><table><tr><th></th><th class="r">2026</th><th class="r">2027</th></tr>${row("Selic no fim do ano", "selic")}${row("Inflação (IPCA)", "ipca")}${row("Crescimento do PIB", "pib")}<tr><td>Dólar no fim do ano</td><td class="r num">${cam("2026")}</td><td class="r num">${cam("2027")}</td></tr></table><div class="mut" style="font-size:12px;margin-top:8px;line-height:1.5">Mediana das previsões de economistas, pesquisa Focus do Banco Central de ${d}. É o que os analistas esperam, não uma promessa.</div></div>`;
   }
+  /** Em dia de taxa alta (o app só libera a compra com IPCA+ a partir de 7,2%), mostra como entrar aos poucos com o aporte do mês. */
+  function planoParcelas(taxa) {
+    const ap = +aporteMes() || 0; if (taxa == null || taxa < 7.2 || ap <= 0) return "";
+    const p = planoEntrada({ valor: ap, n: 4, hoje: todayBRT(), passoDias: 14 }), dm = (iso) => iso.slice(8) + "/" + iso.slice(5, 7);
+    return `<div style="margin-top:10px;font-size:13.5px;line-height:1.55;border-left:3px solid var(--gold);padding-left:10px"><b>Entrar aos poucos.</b> Se decidir comprar, divida em 4 parcelas, uma a cada 14 dias. Exemplo com o seu aporte de R$ ${fN(p.total, 0)}: ${p.parcelas.map((x) => `R$ ${fN(x.v, 2)} em ${dm(x.dt)}`).join(", ")}. Ajuste o valor à sua meta de IPCA+. Gestores ouvidos em 27–29/10 repetem o mesmo: comprar em partes, não vender na baixa o que já tem e deixar o dinheiro de curto prazo no Tesouro Selic. É material de estudo, não ordem de compra.</div>`;
+  }
   function tesouroCard() {
     const t = D().tesouro, ref = D().summary?.macro?.tesouro;
     if (!t?.itens?.length) return "";
@@ -29,7 +36,7 @@ export function makeExtras(c) {
       ${sel ? `<tr><td>Tesouro Selic ${y(sel.venc)}</td><td class="r num">Selic + ${fN(sel.compra)}%</td></tr>` : ""}
       ${ipca.filter((_, i) => [0, 2, 3, 5].includes(i) || ipca.length < 5).map((i) => `<tr><td>Tesouro IPCA+ ${y(i.venc)}</td><td class="r num">IPCA + ${fN(i.compra)}%</td></tr>`).join("")}
       ${pre.slice(0, 3).map((i) => `<tr><td>Tesouro Prefixado ${y(i.venc)}</td><td class="r num">${fN(i.compra)}%</td></tr>`).join("")}</table>
-      <div style="margin-top:10px;font-size:14px;line-height:1.5">${ver}</div>
+      <div style="margin-top:10px;font-size:14px;line-height:1.5">${ver}</div>${planoParcelas(r2032)}
       <div class="mut" style="font-size:12px;margin-top:8px;line-height:1.5">Taxas do Tesouro Transparente de ${d}. Saem com um dia útil de atraso: em dias de forte oscilação (como 26/10) a taxa de agora pode ser bem diferente. Confira no app antes de comprar.</div></div>`;
   }
 

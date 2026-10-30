@@ -85,3 +85,14 @@ test("relatório anual da carteira gera um PDF válido, mesmo com muitas posiç�
   const txt = new TextDecoder("latin1").decode(bytes);
   assert.equal(txt.slice(0, 5), "%PDF-"); assert.ok(txt.trimEnd().endsWith("%%EOF")); assert.ok((txt.match(/\/Type \/Page /g) || []).length >= 2, "paginou"); assert.ok(txt.includes("Relat")); assert.ok(txt.includes("Galp"));
 });
+
+test("plano de entrada em parcelas: fecha no centavo, datas de 14 em 14 dias, limites", async () => {
+  const { planoEntrada } = await import("../../docs/invest.js");
+  const p = planoEntrada({ valor: 1500, n: 4, hoje: "2026-10-29", passoDias: 14 });
+  assert.deepEqual(p.parcelas.map((x) => x.dt), ["2026-10-29", "2026-11-12", "2026-11-26", "2026-12-10"]);
+  assert.deepEqual(p.parcelas.map((x) => x.v), [375, 375, 375, 375]);
+  const q = planoEntrada({ valor: 100, n: 3, hoje: "2026-10-29" });
+  assert.equal(q.parcelas.reduce((s, x) => Math.round((s + x.v) * 100) / 100, 0), 100); assert.equal(q.parcelas[2].v, 33.34);
+  assert.equal(planoEntrada({ valor: 50, n: 99, hoje: "2026-10-29" }).parcelas.length, 12);
+  assert.equal(planoEntrada({ valor: -5, n: 0, hoje: "2026-10-29" }).total, 0);
+});
