@@ -100,7 +100,7 @@ export function makeGastos(c) {
         if (st.code) {
           const tg = st.code.canal === "tg", link = tg ? (st.code.tgBot ? `https://t.me/${st.code.tgBot}?start=${st.code.code}` : "") : `https://wa.me/${st.code.bot}?text=${encodeURIComponent("vincular " + st.code.code)}`;
           h += `<div class="stat" style="margin:12px 0"><small>Seu código (vale 15 minutos)</small><b class="num" style="font-size:24px;letter-spacing:.12em">${esc(st.code.code)}</b></div>`;
-          h += link ? `<a class="btn" target="_blank" rel="noopener" href="${esc(link)}">Abrir o ${tg ? "Telegram" : "WhatsApp"} e enviar o código</a><div class="mut" style="font-size:12.5px;margin-top:8px">${tg ? "Toque em Iniciar no bot." : "O texto já vem escrito. Só enviar."}</div>` : `<div class="mut" style="font-size:13px">Abra o bot no Telegram e envie: <b>vincular ${esc(st.code.code)}</b></div>`;
+          h += link ? `<a class="btn" target="_blank" rel="noopener" href="${esc(link)}">Abrir o ${tg ? "Telegram" : "WhatsApp"} e enviar o código</a><div class="mut" style="font-size:12.5px;margin-top:8px">${tg ? "Toque em Iniciar no bot. Se o Telegram abrir e não mandar nada (acontece no iPhone quando o bot já foi iniciado), digite lá só os 6 números do código." : "O texto já vem escrito. Só enviar. Se não vier, envie só os 6 números do código."}</div>` : `<div class="mut" style="font-size:13px">Abra o bot no Telegram e envie: <b>vincular ${esc(st.code.code)}</b></div>`;
         } else h += (can.tg ? `<button class="btn" data-glink="tg">Conectar ao Telegram</button>` : "") + (can.wa ? `<button class="btn ${can.tg ? "ghost" : ""}" data-glink="wa">Conectar ao WhatsApp</button>` : "");
       }
     } else {

@@ -353,6 +353,16 @@ test("Telegram: webhook exige o segredo; vínculo por /start com código; estado
   const n = saidas.length; await tgz({ text: "gastei 10 no mercado" }, { de: 999, chat: 999 }); assert.match(ultima(), /Ainda não conheço você/); assert.equal(saidas.length, n + 1);
 });
 
+test("Telegram: código digitado sozinho liga o chat novo (iPhone); em chat ligado segue sendo gasto", async () => {
+  await api("/api/sync", { since: 0, items: [] });
+  const r = await api("/api/register", {});
+  await tgz({ text: "/start" }, { de: 777, chat: 777 }); assert.match(ultima(), /envie só os 6 números/);
+  await tgz({ text: "000000" }, { de: 777, chat: 777 }); assert.match(ultima(), /não vale mais/);
+  const c = r.body.code; await tgz({ text: c.slice(0, 3) + " " + c.slice(3) }, { de: 777, chat: 777 }); assert.match(ultima(), /Conectado/);
+  const s = (await api("/api/status")).body; assert.equal(s.linked, true); assert.equal(s.canal, "telegram");
+  await tgz({ text: "gastei 10 no mercado" }, { de: 777, chat: 777 }); assert.match(ultima(), /mercado/i);
+});
+
 test("Telegram: anota, comandos com barra, relatório e áudio", async () => {
   await vinculaTg();
   await tgz({ text: "gastei 45,90 no mercado" }); assert.match(ultima(), /45,90.*Mercado/s); assert.equal(saidas.at(-1).to, 777);

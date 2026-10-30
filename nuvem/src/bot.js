@@ -167,6 +167,13 @@ const lista = (s, f = (x) => x) => String(s || "").split(",").map((x) => f(x.tri
 const permitidos = (env) => lista(env.ALLOWED, normWa), permitidosTg = (env) => lista(env.ALLOWED_TG);
 const NOME = { wa: "WhatsApp", tg: "Telegram" };
 
+/** Código de vínculo digitado sem o comando: "123456", "123 456", "123-456", "código 123456". Só vale para chat que ainda não está ligado. */
+const codigoSolto = (t) => { const m = /^(?:c[oó]digo\s*:?\s*)?(\d{3})[\s-]?(\d{3})$/i.exec(String(t || "").trim()); return m ? m[1] + m[2] : null; };
+const MSG_SEM_CONTA = {
+  tg: "Olá! Ainda não conheço você. No app Uiraçu, aba *Gastos*, toque em *Conectar ao Telegram*. Aparece um código de 6 números: *envie só os 6 números aqui* (ou toque no botão do app e depois em Iniciar). O código vale 15 minutos.",
+  wa: "Este número ainda não está conectado. No app Uiraçu, aba *Gastos*, toque em *Conectar ao WhatsApp* e envie aqui o código de 6 números que aparece lá.",
+};
+
 /** Vincula o chat ao usuário do app pelo código de 6 dígitos (vale 15 min; 5 tentativas erradas por hora por pessoa). */
 async function vincular(env, code, canal, id, to) {
   const ok = canal === "tg" ? permitidosTg(env) : permitidos(env); if (ok.length && !ok.includes(id)) return;
@@ -217,8 +224,10 @@ export async function onMessage(env, m) {
   const user = await env.DB.prepare("SELECT * FROM users WHERE wa=?").bind(wa).first();
   const mm = /^vincular\s+(\d{6})$/i.exec(text.replace(/\s+/g, " "));
   if (mm) return vincular(env, mm[1], "wa", wa, from); // vale também para quem já está ligado a outra conta
+  const solto = !user && codigoSolto(text);
+  if (solto) return vincular(env, solto, "wa", wa, from);
   if (!user) {
-    if (permitidos(env).includes(wa)) await sendText(env, from, "Este número ainda não está conectado. No app Uiraçu, aba *Gastos*, toque em *Conectar ao WhatsApp* e envie o código aqui.");
+    if (permitidos(env).includes(wa)) await sendText(env, from, MSG_SEM_CONTA.wa);
     return;
   }
   const msg = m.type === "text" ? { type: "text", text, replyTo: m.context?.id } : m.type === "audio" ? { type: "audio", id: m.audio?.id } : m.type === "image" ? { type: "image", id: m.image?.id }
@@ -242,8 +251,12 @@ export async function onTelegram(env, upd) {
   // código de vínculo vale também para quem já está ligado a outra conta (ex.: reinstalou o app): senão vira "gasto" de R$ 123.456
   const mm = /^(?:start|vincular)\s+(\d{6})$/i.exec(text.replace(/\s+/g, " "));
   if (mm) return vincular(env, mm[1], "tg", id, to);
+  // Chat ainda não ligado: aceita o código sozinho ("123456", "123 456", "código 123456"). O iPhone nem sempre manda o /start com o código
+  // quando o bot já foi iniciado antes, e a pessoa então digita só os números, como o próprio bot pede.
+  const solto = !user && codigoSolto(text);
+  if (solto) return vincular(env, solto, "tg", id, to);
   if (!user) {
-    await sendText(env, to, "Olá! Ainda não conheço você. No app Uiraçu, aba *Gastos*, toque em *Conectar ao Telegram* e envie o código aqui.");
+    await sendText(env, to, MSG_SEM_CONTA.tg);
     return;
   }
   const doc = m.document && /^(application\/pdf|image\/)/.test(m.document.mime_type || "");
