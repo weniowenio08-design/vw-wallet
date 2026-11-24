@@ -59,9 +59,9 @@
   "oferta-KNHF11": "2026-11-17T19:50:48.672Z",
   "oferta-BRCO11": "2026-11-11T15:17:05.853Z",
   "oferta-XPLG11": "2026-11-17T20:38:02.674Z",
-  "oferta-XPML11": "2026-11-17T19:50:48.102Z",
-  "oferta-HGBS11": "2026-11-17T20:38:03.039Z",
-  "oferta-VISC11": "2026-11-17T19:50:47.742Z",
+  "oferta-XPML11": "2026-11-24T21:10:25.561Z",
+  "oferta-HGBS11": "2026-11-24T21:10:24.647Z",
+  "oferta-VISC11": "2026-11-24T21:10:25.129Z",
   "oferta-KNRI11": "2026-11-18T19:24:31.610Z",
   "oferta-HGRU11": "2026-11-11T14:12:04.678Z",
   "news-copomdecideselicnestaquartacommercadoesp": "2026-11-03T17:25:37.380Z",
@@ -163,6 +163,6 @@
   "news-btgeitabbarebaixamaesdobrasilelistampref": "2026-11-19T19:30:09.967Z",
   "news-tarcsiomudananoibovespaebbrebaixadooqueb": "2026-11-21T17:58:21.831Z"
  },
- "regime": "tensao",
+ "regime": "calmo",
  "digestDate": ""
 }
